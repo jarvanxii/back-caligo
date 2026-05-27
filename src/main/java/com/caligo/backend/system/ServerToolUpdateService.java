@@ -24,12 +24,15 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Service
 public class ServerToolUpdateService {
 
     private static final int MAX_OUTPUT_CHARS = 12_000;
     private static final Duration PROBE_TIMEOUT = Duration.ofSeconds(8);
+    private static final Pattern VERSION_TOKEN = Pattern.compile("\\b(v?\\d+(?:\\.\\d+)+(?:[-+._a-zA-Z0-9]*)?)\\b");
     private static final List<ToolDefinition> TOOLS = List.of(
             aptTool("curl", "curl", "Curl", "URLs", "Cliente HTTP para inspeccion, cabeceras y pruebas controladas.", "curl --version", "curl"),
             aptTool("openssl", "openssl", "OpenSSL", "URLs", "Inspeccion TLS, certificados y primitivas criptograficas.", "openssl version", "openssl"),
@@ -272,7 +275,15 @@ public class ServerToolUpdateService {
         if (line == null) {
             return "";
         }
-        return inlineSample(line.replaceAll("\\s+", " ").trim(), 150);
+        String cleaned = stripAnsi(line)
+                .replaceFirst("^\\[[A-Z]+]\\s*", "")
+                .replaceAll("\\s+", " ")
+                .trim();
+        Matcher matcher = VERSION_TOKEN.matcher(cleaned);
+        if (matcher.find()) {
+            return matcher.group(1).replaceAll("[.,;:]+$", "");
+        }
+        return inlineSample(cleaned, 150);
     }
 
     private static String sample(String value, int maxChars) {
