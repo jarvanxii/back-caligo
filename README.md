@@ -273,7 +273,8 @@ Invoke-RestMethod `
 | `GET` | `/api/recon/openvas/scans/{id}/report.pdf` | Si | Informe PDF descargable con logo Caligo. |
 | `GET` | `/api/metasploit/capabilities` | Si | Estado RPC, payloads por defecto y politica de alcance. |
 | `POST` | `/api/metasploit/recommendations` | Si | Genera recomendaciones de modulos desde hosts/puertos detectados. |
-| `GET` | `/api/metasploit/modules/search` | Si | Busca modulos por texto y tipo. |
+| `GET` | `/api/metasploit/module-search` | Si | Busca modulos por texto y tipo. |
+| `GET` | `/api/metasploit/modules/search` | Si | Alias compatible para busqueda de modulos. |
 | `GET` | `/api/metasploit/modules/info` | Si | Info, opciones y payloads compatibles de un modulo. |
 | `POST` | `/api/metasploit/modules/execute` | Si | Ejecuta un modulo via RPC con datastore validado. |
 | `GET` | `/api/metasploit/jobs` | Si | Jobs vivos en Metasploit. |

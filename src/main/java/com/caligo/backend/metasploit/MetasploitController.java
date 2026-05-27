@@ -43,6 +43,14 @@ public class MetasploitController {
         return metasploitService.search(query, type);
     }
 
+    @GetMapping("/module-search")
+    public Map<String, Object> moduleSearch(
+            @RequestParam(defaultValue = "") String query,
+            @RequestParam(defaultValue = "") String type
+    ) {
+        return metasploitService.search(query, type);
+    }
+
     @GetMapping("/modules/info")
     public Map<String, Object> moduleInfo(
             @RequestParam String type,
