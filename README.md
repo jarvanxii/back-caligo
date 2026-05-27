@@ -3,6 +3,7 @@
 Backend Spring Boot de Caligo. Expone una API REST con JWT, Flyway y MariaDB para ejecutar herramientas de laboratorio de ciberseguridad en entornos controlados.
 
 Los modulos funcionales actuales son **URLs**, **Reconocimiento activo**, **Metasploit** y **Fuerza bruta controlada**. URLs cubre DNS, inspeccion URL, HTTP, TLS, reputacion, historial, archivos publicos, endpoints pasivos e inventario de herramientas locales. Reconocimiento activo cubre jobs de **Nmap** y adaptador **OpenVAS/GVM** con JWT, auditoria, validacion de alcance y progreso. Metasploit expone RPC local para discovery asistido, recomendaciones de modulos, ejecucion controlada y gestion de sesiones de laboratorio. Fuerza bruta integra **Hydra** con alcance privado/local, fuentes de credenciales del servidor y trazas redaccionadas.
+El panel de sistema expone inventario versionado de herramientas instaladas y actualizaciones controladas por allowlist.
 
 ## Stack
 
@@ -40,6 +41,7 @@ back-caligo/
     metasploit/   Cliente RPC, recomendaciones, ejecucion de modulos y sesiones
     recon/         Jobs Nmap/OpenVAS, capacidades, progreso y parseo de resultados
     security/      JWT y UserDetailsService
+    system/        Inventario y actualizacion controlada de herramientas del servidor
     urls/          Motor de inteligencia URL/DNS/HTTP/TLS
     user/          Usuarios, roles y endpoint /api/me
   src/main/resources/
@@ -132,6 +134,7 @@ http://localhost:8080
 | `CALIGO_MSF_RPC_USER` | `caligo` | Usuario RPC de Metasploit. |
 | `CALIGO_MSF_RPC_PASSWORD` | sin configurar | Password RPC generada fuera del repo. |
 | `CALIGO_MSF_RPC_TIMEOUT_SECONDS` | `20` | Timeout de llamadas RPC. |
+| `CALIGO_SYSTEM_TOOL_UPDATE_TIMEOUT_SECONDS` | `900` | Timeout maximo por paso de actualizacion de herramientas. |
 
 ## Esquema MariaDB
 
@@ -258,6 +261,8 @@ Invoke-RestMethod `
 | `POST` | `/api/auth/register` | No | Registro temporal local. |
 | `GET` | `/api/me` | Si | Perfil autenticado. |
 | `GET` | `/api/modules` | Si | Modulos habilitados. |
+| `GET` | `/api/system/tools` | Si | Inventario de herramientas del servidor, version, path y gestor. |
+| `POST` | `/api/system/tools/{id}/update` | Si, ADMIN | Actualiza una herramienta allowlisted desde el servidor. |
 | `GET` | `/api/urls/local-tools` | Si | Inventario de herramientas locales instaladas. |
 | `POST` | `/api/urls/dns-resolver` | Si | DNS: `A`, `AAAA`, `CNAME`, `MX`, `NS`, `TXT`, `CAA`. |
 | `POST` | `/api/urls/inspector` | Si | Normalizacion e indicadores URL. |
@@ -583,6 +588,28 @@ laboratorio de Caligo viven en `/opt/caligo/wordlists` y las wordlists del
 sistema se leen solo si estan bajo las raices permitidas por
 `CALIGO_HYDRA_WORDLIST_ROOTS`.
 
+### Actualizaciones desde Caligo
+
+El endpoint `GET /api/system/tools` devuelve el inventario del servidor con
+version actual, binario detectado, grupo funcional y gestor (`apt`, `go` o
+`gem`). El frontend lo usa en `Ajustes > Actualizaciones`.
+
+El endpoint `POST /api/system/tools/{id}/update` solo acepta IDs definidos en el
+backend. No recibe comandos desde el navegador y requiere rol `ADMIN`. Cada
+accion se audita como `SYSTEM_TOOL_UPDATE_START`, `SYSTEM_TOOL_UPDATE_SUCCESS`
+o `SYSTEM_TOOL_UPDATE_FAILED`.
+
+Los updates usan comandos estaticos:
+
+- Paquetes APT: `sudo -n apt-get update` y `sudo -n apt-get install --only-upgrade -y <paquete>`.
+- Herramientas Go: `go install <modulo>@latest`.
+- Gems: `sudo -n gem update <gem>`.
+
+Para que APT/Gem funcionen desde el servicio sin hardcodear passwords, el
+servidor debe conceder `NOPASSWD` solo a los comandos de mantenimiento
+permitidos para el usuario del servicio. Si no existe ese permiso, el endpoint
+devuelve el fallo de `sudo -n` en la salida de la operacion y no queda bloqueado.
+
 ## Despliegue servidor
 
 Servidor asignado: `192.168.0.253`.
@@ -610,6 +637,7 @@ CALIGO_MSF_RPC_USER=caligo
 CALIGO_MSF_RPC_PASSWORD=<password-random-local>
 CALIGO_HYDRA_BINARY=hydra
 CALIGO_HYDRA_WORDLIST_ROOTS=/opt/caligo/wordlists,/usr/share/wordlists
+CALIGO_SYSTEM_TOOL_UPDATE_TIMEOUT_SECONDS=900
 ```
 
 No guardar este archivo en Git.

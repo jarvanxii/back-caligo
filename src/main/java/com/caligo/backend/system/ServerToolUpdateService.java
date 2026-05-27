@@ -1,0 +1,398 @@
+package com.caligo.backend.system;
+
+import com.caligo.backend.audit.AuditEvent;
+import com.caligo.backend.audit.AuditEventRepository;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+
+@Service
+public class ServerToolUpdateService {
+
+    private static final int MAX_OUTPUT_CHARS = 12_000;
+    private static final Duration PROBE_TIMEOUT = Duration.ofSeconds(8);
+    private static final List<ToolDefinition> TOOLS = List.of(
+            aptTool("curl", "curl", "Curl", "URLs", "Cliente HTTP para inspeccion, cabeceras y pruebas controladas.", "curl --version", "curl"),
+            aptTool("openssl", "openssl", "OpenSSL", "URLs", "Inspeccion TLS, certificados y primitivas criptograficas.", "openssl version", "openssl"),
+            aptTool("whois", "whois", "Whois", "URLs", "Consulta RDAP/WHOIS de dominios e IPs.", "whois --version", "whois"),
+            aptTool("dig", "dig", "dig", "URLs", "Resolucion DNS tecnica desde el servidor.", "dig -v", "dnsutils"),
+            aptTool("nslookup", "nslookup", "nslookup", "URLs", "Resolucion DNS compatible y diagnostico rapido.", "nslookup -version", "dnsutils"),
+            aptTool("ffuf", "ffuf", "ffuf", "URLs", "Fuzzing web autorizado y descubrimiento de rutas.", "ffuf -V", "ffuf"),
+            goTool("httpx", "httpx", "httpx", "URLs", "Fingerprint HTTP masivo y probes de superficie web.", "httpx -version", "github.com/projectdiscovery/httpx/cmd/httpx"),
+            goTool("nuclei", "nuclei", "Nuclei", "URLs", "Plantillas de deteccion controlada para servicios web.", "nuclei -version", "github.com/projectdiscovery/nuclei/v3/cmd/nuclei"),
+            goTool("katana", "katana", "Katana", "URLs", "Crawler pasivo/activo para descubrir endpoints.", "katana -version", "github.com/projectdiscovery/katana/cmd/katana"),
+            goTool("gau", "gau", "gau", "URLs", "Recoleccion historica de URLs publicas.", "gau --version", "github.com/lc/gau/v2/cmd/gau"),
+            goTool("subfinder", "subfinder", "Subfinder", "URLs", "Descubrimiento pasivo de subdominios.", "subfinder -version", "github.com/projectdiscovery/subfinder/v2/cmd/subfinder"),
+            goTool("amass", "amass", "Amass", "URLs", "Enumeracion OSINT de dominios y superficie externa.", "amass -version", "github.com/owasp-amass/amass/v4/..."),
+            aptTool("nmap", "nmap", "Nmap", "Reconocimiento", "Escaneo parametrizado de puertos, servicios y scripts NSE.", "nmap --version", "nmap"),
+            aptGroupTool("openvas", "gvm-cli", "OpenVAS / GVM", "Reconocimiento", "Motor Greenbone GMP para tareas OpenVAS.", "gvm-cli --version", List.of("gvm", "gvmd", "openvas-scanner", "ospd-openvas", "gvm-tools")),
+            aptTool("metasploit", "msfconsole", "Metasploit", "Vulnerabilidades", "Framework RPC para validacion controlada de exploits.", "msfconsole -v", "metasploit-framework"),
+            aptTool("hydra", "hydra", "Hydra", "Fuerza bruta", "Validacion de credenciales en servicios de laboratorio.", "hydra -h", "hydra"),
+            aptTool("john", "john", "John the Ripper", "Contrasenas", "Auditoria local de hashes y password cracking.", "john --version", "john"),
+            aptTool("hashcat", "hashcat", "Hashcat", "Contrasenas", "Cracking acelerado de hashes cuando hay GPU/CPU disponible.", "hashcat --version", "hashcat"),
+            aptTool("exiftool", "exiftool", "ExifTool", "Esteganografia", "Extraccion y analisis de metadatos en ficheros.", "exiftool -ver", "libimage-exiftool-perl"),
+            aptTool("steghide", "steghide", "Steghide", "Esteganografia", "Extraccion e insercion controlada de datos ocultos.", "steghide --version", "steghide"),
+            aptTool("binwalk", "binwalk", "Binwalk", "Esteganografia", "Analisis de firmas y contenido embebido.", "binwalk --version", "binwalk"),
+            gemTool("zsteg", "zsteg", "zsteg", "Esteganografia", "Deteccion de datos ocultos en imagenes PNG/BMP.", "zsteg --version", "zsteg")
+    );
+
+    private final AuditEventRepository auditEvents;
+    private final Duration updateTimeout;
+    private final ExecutorService ioExecutor = Executors.newCachedThreadPool(runnable -> {
+        Thread thread = new Thread(runnable, "caligo-system-tool-io");
+        thread.setDaemon(true);
+        return thread;
+    });
+
+    public ServerToolUpdateService(
+            AuditEventRepository auditEvents,
+            @Value("${caligo.system.tool-update-timeout-seconds:900}") long updateTimeoutSeconds
+    ) {
+        this.auditEvents = auditEvents;
+        this.updateTimeout = Duration.ofSeconds(Math.max(30, updateTimeoutSeconds));
+    }
+
+    public Map<String, Object> inventory() {
+        List<Map<String, Object>> tools = TOOLS.stream()
+                .map(definition -> snapshot(definition).toMap())
+                .toList();
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("generatedAt", Instant.now().toString());
+        response.put("toolCount", tools.size());
+        response.put("tools", tools);
+        return response;
+    }
+
+    public Map<String, Object> update(String id, String username, String remoteIp) {
+        ToolDefinition definition = findDefinition(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Herramienta no registrada en Caligo"));
+        if (definition.updateCommands().isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "La herramienta no tiene actualizacion gestionada");
+        }
+
+        ToolSnapshot before = snapshot(definition);
+        if (!before.installed()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "La herramienta no esta instalada en el servidor");
+        }
+
+        Instant startedAt = Instant.now();
+        audit(username, "SYSTEM_TOOL_UPDATE_START", definition.id(), remoteIp);
+
+        StringBuilder output = new StringBuilder();
+        int exitCode = 0;
+        boolean completed = true;
+        for (List<String> command : definition.updateCommands()) {
+            CommandResult result = runCommand(command, updateTimeout);
+            exitCode = result.exitCode();
+            appendOutput(output, "$ " + preview(command));
+            appendOutput(output, result.output());
+            if (result.timedOut()) {
+                completed = false;
+                appendOutput(output, "TIMEOUT: la actualizacion supero " + updateTimeout.toSeconds() + "s");
+                break;
+            }
+            if (result.exitCode() != 0) {
+                completed = false;
+                break;
+            }
+        }
+
+        ToolSnapshot after = snapshot(definition);
+        String status = completed ? "completed" : "failed";
+        audit(username, completed ? "SYSTEM_TOOL_UPDATE_SUCCESS" : "SYSTEM_TOOL_UPDATE_FAILED", definition.id(), remoteIp);
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("id", definition.id());
+        response.put("label", definition.label());
+        response.put("status", status);
+        response.put("startedAt", startedAt.toString());
+        response.put("completedAt", Instant.now().toString());
+        response.put("beforeVersion", before.version());
+        response.put("afterVersion", after.version());
+        response.put("changed", !Objects.equals(before.version(), after.version()));
+        response.put("exitCode", exitCode);
+        response.put("manager", definition.manager());
+        response.put("commandPreview", definition.commandPreview());
+        response.put("output", sample(output.toString(), MAX_OUTPUT_CHARS));
+        response.put("tool", after.toMap());
+        return response;
+    }
+
+    private Optional<ToolDefinition> findDefinition(String id) {
+        String normalized = id == null ? "" : id.toLowerCase(Locale.ROOT).trim();
+        return TOOLS.stream().filter(definition -> definition.id().equals(normalized)).findFirst();
+    }
+
+    private ToolSnapshot snapshot(ToolDefinition definition) {
+        String path = firstNonBlank(runCommand(List.of("sh", "-lc", "command -v " + definition.binary()), PROBE_TIMEOUT).output());
+        boolean installed = path != null && !path.isBlank();
+        String version = "";
+        if (installed) {
+            CommandResult versionResult = runCommand(List.of("sh", "-lc", definition.versionCommand()), PROBE_TIMEOUT);
+            version = normalizeVersion(firstNonBlank(versionResult.output()));
+        }
+        return new ToolSnapshot(
+                definition.id(),
+                definition.binary(),
+                definition.label(),
+                definition.group(),
+                definition.description(),
+                installed,
+                path == null ? "" : path,
+                version,
+                definition.manager(),
+                installed && !definition.updateCommands().isEmpty(),
+                definition.commandPreview(),
+                installed ? "ready" : "missing"
+        );
+    }
+
+    private CommandResult runCommand(List<String> command, Duration timeout) {
+        Process process = null;
+        StringBuilder output = new StringBuilder();
+        try {
+            process = new ProcessBuilder(command)
+                    .redirectErrorStream(true)
+                    .start();
+            Process runningProcess = process;
+            Future<?> reader = ioExecutor.submit(() -> readProcessOutput(runningProcess, output));
+            boolean finished = process.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS);
+            if (!finished) {
+                process.destroyForcibly();
+                try {
+                    reader.get(2, TimeUnit.SECONDS);
+                } catch (Exception ignored) {
+                    // The process is already being killed; partial output is enough.
+                }
+                return new CommandResult(-1, sample(output.toString(), MAX_OUTPUT_CHARS), true);
+            }
+            try {
+                reader.get(2, TimeUnit.SECONDS);
+            } catch (Exception ignored) {
+                // Preserve command result even if the reader lags after process exit.
+            }
+            return new CommandResult(process.exitValue(), sample(output.toString(), MAX_OUTPUT_CHARS), false);
+        } catch (IOException ex) {
+            return new CommandResult(127, sample(ex.getMessage(), MAX_OUTPUT_CHARS), false);
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            if (process != null) {
+                process.destroyForcibly();
+            }
+            return new CommandResult(-1, "Proceso interrumpido", true);
+        }
+    }
+
+    private void readProcessOutput(Process process, StringBuilder output) {
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                appendOutput(output, line);
+                if (output.length() >= MAX_OUTPUT_CHARS) {
+                    appendOutput(output, "[salida truncada]");
+                    break;
+                }
+            }
+        } catch (IOException ignored) {
+            // Command output is best effort for the settings modal.
+        }
+    }
+
+    private void audit(String username, String action, String target, String remoteIp) {
+        auditEvents.save(new AuditEvent(username, action, target, remoteIp));
+    }
+
+    private static synchronized void appendOutput(StringBuilder output, String value) {
+        if (value == null || value.isBlank() || output.length() >= MAX_OUTPUT_CHARS) {
+            return;
+        }
+        if (output.length() > 0) {
+            output.append('\n');
+        }
+        output.append(sample(value, MAX_OUTPUT_CHARS - output.length()));
+    }
+
+    private static String firstNonBlank(String output) {
+        if (output == null) {
+            return null;
+        }
+        for (String line : output.split("\\R")) {
+            String trimmed = line.trim();
+            if (!trimmed.isBlank()) {
+                return trimmed;
+            }
+        }
+        return null;
+    }
+
+    private static String normalizeVersion(String line) {
+        if (line == null) {
+            return "";
+        }
+        return sample(line.replaceAll("\\s+", " ").trim(), 160);
+    }
+
+    private static String sample(String value, int maxChars) {
+        if (value == null) {
+            return "";
+        }
+        if (value.length() <= maxChars) {
+            return value;
+        }
+        return value.substring(0, Math.max(0, maxChars - 18)) + "\n[...truncado...]";
+    }
+
+    private static ToolDefinition aptTool(
+            String id,
+            String binary,
+            String label,
+            String group,
+            String description,
+            String versionCommand,
+            String packageName
+    ) {
+        return aptGroupTool(id, binary, label, group, description, versionCommand, List.of(packageName));
+    }
+
+    private static ToolDefinition aptGroupTool(
+            String id,
+            String binary,
+            String label,
+            String group,
+            String description,
+            String versionCommand,
+            List<String> packageNames
+    ) {
+        List<String> install = new ArrayList<>(List.of("sudo", "-n", "apt-get", "install", "--only-upgrade", "-y"));
+        install.addAll(packageNames);
+        return new ToolDefinition(
+                id,
+                binary,
+                label,
+                group,
+                description,
+                versionCommand,
+                "apt",
+                List.of(List.of("sudo", "-n", "apt-get", "update"), List.copyOf(install))
+        );
+    }
+
+    private static ToolDefinition goTool(
+            String id,
+            String binary,
+            String label,
+            String group,
+            String description,
+            String versionCommand,
+            String module
+    ) {
+        return new ToolDefinition(
+                id,
+                binary,
+                label,
+                group,
+                description,
+                versionCommand,
+                "go",
+                List.of(List.of("sh", "-lc", "go install " + module + "@latest"))
+        );
+    }
+
+    private static ToolDefinition gemTool(
+            String id,
+            String binary,
+            String label,
+            String group,
+            String description,
+            String versionCommand,
+            String gemName
+    ) {
+        return new ToolDefinition(
+                id,
+                binary,
+                label,
+                group,
+                description,
+                versionCommand,
+                "gem",
+                List.of(List.of("sudo", "-n", "gem", "update", gemName))
+        );
+    }
+
+    private static String preview(List<String> command) {
+        return String.join(" ", command);
+    }
+
+    private record ToolDefinition(
+            String id,
+            String binary,
+            String label,
+            String group,
+            String description,
+            String versionCommand,
+            String manager,
+            List<List<String>> updateCommands
+    ) {
+        String commandPreview() {
+            return updateCommands.stream()
+                    .map(ServerToolUpdateService::preview)
+                    .reduce((left, right) -> left + " && " + right)
+                    .orElse("");
+        }
+    }
+
+    private record ToolSnapshot(
+            String id,
+            String binary,
+            String label,
+            String group,
+            String description,
+            boolean installed,
+            String path,
+            String version,
+            String manager,
+            boolean updateSupported,
+            String updateCommandPreview,
+            String status
+    ) {
+        Map<String, Object> toMap() {
+            Map<String, Object> map = new LinkedHashMap<>();
+            map.put("id", id);
+            map.put("binary", binary);
+            map.put("label", label);
+            map.put("group", group);
+            map.put("description", description);
+            map.put("installed", installed);
+            map.put("path", path);
+            map.put("version", version);
+            map.put("manager", manager);
+            map.put("updateSupported", updateSupported);
+            map.put("updateCommandPreview", updateCommandPreview);
+            map.put("status", status);
+            return map;
+        }
+    }
+
+    private record CommandResult(int exitCode, String output, boolean timedOut) {
+    }
+}
