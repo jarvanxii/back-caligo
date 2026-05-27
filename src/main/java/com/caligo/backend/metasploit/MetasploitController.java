@@ -101,6 +101,66 @@ public class MetasploitController {
         return metasploitService.sessionCommand(id, request, authentication.getName(), remoteIp(servletRequest));
     }
 
+    @PostMapping("/sessions/{id}/workspace")
+    public Map<String, Object> sessionWorkspace(
+            @PathVariable String id,
+            @Valid @RequestBody(required = false) RemotePathRequest request,
+            Authentication authentication,
+            HttpServletRequest servletRequest
+    ) {
+        return metasploitService.sessionWorkspace(id, request, authentication.getName(), remoteIp(servletRequest));
+    }
+
+    @PostMapping("/sessions/{id}/fs/list")
+    public Map<String, Object> sessionFileList(
+            @PathVariable String id,
+            @Valid @RequestBody(required = false) RemotePathRequest request,
+            Authentication authentication,
+            HttpServletRequest servletRequest
+    ) {
+        return metasploitService.sessionFileList(id, request, authentication.getName(), remoteIp(servletRequest));
+    }
+
+    @PostMapping("/sessions/{id}/fs/read")
+    public Map<String, Object> sessionFileRead(
+            @PathVariable String id,
+            @Valid @RequestBody RemoteFileReadRequest request,
+            Authentication authentication,
+            HttpServletRequest servletRequest
+    ) {
+        return metasploitService.sessionFileRead(id, request, authentication.getName(), remoteIp(servletRequest));
+    }
+
+    @PostMapping("/sessions/{id}/fs/mkdir")
+    public Map<String, Object> sessionMkdir(
+            @PathVariable String id,
+            @Valid @RequestBody RemotePathRequest request,
+            Authentication authentication,
+            HttpServletRequest servletRequest
+    ) {
+        return metasploitService.sessionMkdir(id, request, authentication.getName(), remoteIp(servletRequest));
+    }
+
+    @PostMapping("/sessions/{id}/fs/delete")
+    public Map<String, Object> sessionFileDelete(
+            @PathVariable String id,
+            @Valid @RequestBody RemoteFileDeleteRequest request,
+            Authentication authentication,
+            HttpServletRequest servletRequest
+    ) {
+        return metasploitService.sessionFileDelete(id, request, authentication.getName(), remoteIp(servletRequest));
+    }
+
+    @PostMapping("/sessions/{id}/fs/rename")
+    public Map<String, Object> sessionFileRename(
+            @PathVariable String id,
+            @Valid @RequestBody RemoteMoveRequest request,
+            Authentication authentication,
+            HttpServletRequest servletRequest
+    ) {
+        return metasploitService.sessionFileRename(id, request, authentication.getName(), remoteIp(servletRequest));
+    }
+
     @DeleteMapping("/sessions/{id}")
     public Map<String, Object> stopSession(
             @PathVariable String id,

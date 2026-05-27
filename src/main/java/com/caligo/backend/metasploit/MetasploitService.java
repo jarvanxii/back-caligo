@@ -28,6 +28,7 @@ public class MetasploitService {
 
     private static final Pattern SAFE_TARGET = Pattern.compile("^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,179}$");
     private static final Pattern SAFE_MODULE = Pattern.compile("^[a-z0-9_./-]{1,240}$");
+    private static final Pattern UNSAFE_REMOTE_PATH = Pattern.compile("[\\r\\n\\u0000;&|`<>]");
     private static final Pattern IPV4 = Pattern.compile("^(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})$");
     private static final Set<String> MODULE_TYPES = Set.of("exploit", "auxiliary", "post", "payload");
     private static final Set<String> BLOCKED_OPTIONS = Set.of(
@@ -189,13 +190,81 @@ public class MetasploitService {
         String type = String.valueOf(session.getOrDefault("type", ""));
         auditEvents.save(new AuditEvent(username, "METASPLOIT_SESSION_COMMAND", sessionId + " " + sample(command, 80), remoteIp));
         if (type.toLowerCase(Locale.ROOT).contains("meterpreter")) {
-            rpc.call("session.meterpreter_write", sessionId, command);
-            sleepBriefly();
-            return Map.of("sessionId", sessionId, "output", rpc.call("session.meterpreter_read", sessionId));
+            return Map.of("sessionId", sessionId, "output", runMeterpreterCommand(sessionId, command, 550));
         }
         rpc.call("session.shell_write", sessionId, command.endsWith("\n") ? command : command + "\n");
         sleepBriefly();
         return Map.of("sessionId", sessionId, "output", rpc.call("session.shell_read", sessionId));
+    }
+
+    public Map<String, Object> sessionWorkspace(String id, RemotePathRequest request, String username, String remoteIp) {
+        String sessionId = sanitizeSessionId(id);
+        Map<String, Object> session = meterpreterSessionById(sessionId);
+        String path = sanitizeRemotePath(request == null ? "" : request.path(), true);
+        auditEvents.save(new AuditEvent(username, "METASPLOIT_SESSION_WORKSPACE", sessionId + " " + sample(path, 120), remoteIp));
+
+        Map<String, Object> listing = fileList(sessionId, path);
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("session", session);
+        response.putAll(listing);
+        response.put("actions", List.of("list", "read", "console"));
+        return response;
+    }
+
+    public Map<String, Object> sessionFileList(String id, RemotePathRequest request, String username, String remoteIp) {
+        String sessionId = sanitizeSessionId(id);
+        String path = sanitizeRemotePath(request == null ? "" : request.path(), true);
+        meterpreterSessionById(sessionId);
+        auditEvents.save(new AuditEvent(username, "METASPLOIT_SESSION_FILE_LIST", sessionId + " " + sample(path, 120), remoteIp));
+        return fileList(sessionId, path);
+    }
+
+    public Map<String, Object> sessionFileRead(String id, RemoteFileReadRequest request, String username, String remoteIp) {
+        String sessionId = sanitizeSessionId(id);
+        String path = sanitizeRemotePath(request.path(), false);
+        meterpreterSessionById(sessionId);
+        auditEvents.save(new AuditEvent(username, "METASPLOIT_SESSION_FILE_READ", sessionId + " " + sample(path, 120), remoteIp));
+
+        String raw = runMeterpreterCommand(sessionId, "cat " + quoteRemotePath(path), 900);
+        int maxBytes = Math.max(1024, Math.min(262_144, request.maxBytes() == null ? 65_536 : request.maxBytes()));
+        String content = sample(raw, maxBytes);
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("sessionId", sessionId);
+        response.put("path", path);
+        response.put("content", content);
+        response.put("truncated", raw.length() > content.length());
+        response.put("bytesReturned", content.getBytes(java.nio.charset.StandardCharsets.UTF_8).length);
+        response.put("raw", raw);
+        return response;
+    }
+
+    public Map<String, Object> sessionMkdir(String id, RemotePathRequest request, String username, String remoteIp) {
+        String sessionId = sanitizeSessionId(id);
+        String path = sanitizeRemotePath(request.path(), false);
+        meterpreterSessionById(sessionId);
+        auditEvents.save(new AuditEvent(username, "METASPLOIT_SESSION_MKDIR", sessionId + " " + sample(path, 120), remoteIp));
+        String output = runMeterpreterCommand(sessionId, "mkdir " + quoteRemotePath(path), 700);
+        return fileMutationResponse(sessionId, path, output);
+    }
+
+    public Map<String, Object> sessionFileDelete(String id, RemoteFileDeleteRequest request, String username, String remoteIp) {
+        String sessionId = sanitizeSessionId(id);
+        String path = sanitizeRemotePath(request.path(), false);
+        meterpreterSessionById(sessionId);
+        auditEvents.save(new AuditEvent(username, "METASPLOIT_SESSION_FILE_DELETE", sessionId + " " + sample(path, 120), remoteIp));
+        String command = Boolean.TRUE.equals(request.directory()) ? "rmdir " : "rm ";
+        String output = runMeterpreterCommand(sessionId, command + quoteRemotePath(path), 750);
+        return fileMutationResponse(sessionId, parentPath(path), output);
+    }
+
+    public Map<String, Object> sessionFileRename(String id, RemoteMoveRequest request, String username, String remoteIp) {
+        String sessionId = sanitizeSessionId(id);
+        String path = sanitizeRemotePath(request.path(), false);
+        String targetPath = sanitizeRemotePath(request.targetPath(), false);
+        meterpreterSessionById(sessionId);
+        auditEvents.save(new AuditEvent(username, "METASPLOIT_SESSION_FILE_RENAME", sessionId + " " + sample(path + " -> " + targetPath, 160), remoteIp));
+        String output = runMeterpreterCommand(sessionId, "mv " + quoteRemotePath(path) + " " + quoteRemotePath(targetPath), 750);
+        return fileMutationResponse(sessionId, parentPath(targetPath), output);
     }
 
     public Map<String, Object> stopSession(String id, String username, String remoteIp) {
@@ -355,6 +424,147 @@ public class MetasploitService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Sesion no encontrada"));
     }
 
+    private Map<String, Object> meterpreterSessionById(String id) {
+        Map<String, Object> session = sessionById(id);
+        String type = String.valueOf(session.getOrDefault("type", ""));
+        if (!type.toLowerCase(Locale.ROOT).contains("meterpreter")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El explorador grafico requiere una sesion Meterpreter");
+        }
+        return session;
+    }
+
+    private Map<String, Object> fileList(String sessionId, String requestedPath) {
+        String cdOutput = "";
+        if (hasText(requestedPath)) {
+            cdOutput = runMeterpreterCommand(sessionId, "cd " + quoteRemotePath(requestedPath), 650);
+        }
+        String pwdOutput = runMeterpreterCommand(sessionId, "pwd", 500);
+        String lsOutput = runMeterpreterCommand(sessionId, "ls", 850);
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("sessionId", sessionId);
+        response.put("requestedPath", requestedPath);
+        response.put("currentPath", extractCurrentPath(pwdOutput, requestedPath));
+        response.put("entries", parseLsOutput(lsOutput));
+        response.put("raw", Map.of(
+                "cd", cdOutput,
+                "pwd", pwdOutput,
+                "ls", lsOutput
+        ));
+        return response;
+    }
+
+    private Map<String, Object> fileMutationResponse(String sessionId, String refreshPath, String output) {
+        Map<String, Object> listing = fileList(sessionId, refreshPath);
+        Map<String, Object> response = new LinkedHashMap<>(listing);
+        response.put("output", output);
+        return response;
+    }
+
+    private String runMeterpreterCommand(String sessionId, String command, long waitMillis) {
+        rpc.call("session.meterpreter_write", sessionId, command.endsWith("\n") ? command : command + "\n");
+        sleepMillis(waitMillis);
+        StringBuilder output = new StringBuilder();
+        int emptyReads = 0;
+        for (int index = 0; index < 8; index++) {
+            String chunk = outputText(rpc.call("session.meterpreter_read", sessionId));
+            if (hasText(chunk)) {
+                output.append(chunk);
+                emptyReads = 0;
+            } else {
+                emptyReads++;
+            }
+            if (emptyReads >= 2) {
+                break;
+            }
+            sleepMillis(180);
+        }
+        return cleanMeterpreterOutput(output.toString());
+    }
+
+    private String outputText(Object raw) {
+        if (raw instanceof Map<?, ?> map) {
+            Object value = map.get("data");
+            if (value == null) {
+                value = map.get("output");
+            }
+            return value == null ? "" : String.valueOf(value);
+        }
+        return raw == null ? "" : String.valueOf(raw);
+    }
+
+    private String cleanMeterpreterOutput(String raw) {
+        if (raw == null) {
+            return "";
+        }
+        return raw.replace("\r\n", "\n").replaceAll("(?m)^meterpreter\\s*>\\s*", "").trim();
+    }
+
+    private String extractCurrentPath(String pwdOutput, String fallbackPath) {
+        if (!hasText(pwdOutput)) {
+            return hasText(fallbackPath) ? fallbackPath : ".";
+        }
+        String[] lines = pwdOutput.split("\\R");
+        for (int index = lines.length - 1; index >= 0; index--) {
+            String line = lines[index].trim();
+            if (!line.isBlank() && !line.startsWith("[-]") && !line.toLowerCase(Locale.ROOT).startsWith("current")) {
+                return line;
+            }
+        }
+        return hasText(fallbackPath) ? fallbackPath : ".";
+    }
+
+    private List<Map<String, Object>> parseLsOutput(String raw) {
+        List<Map<String, Object>> entries = new ArrayList<>();
+        if (!hasText(raw)) {
+            return entries;
+        }
+        for (String line : raw.split("\\R")) {
+            String trimmed = line.trim();
+            if (trimmed.isBlank()
+                    || trimmed.startsWith("Listing:")
+                    || trimmed.startsWith("===")
+                    || trimmed.startsWith("---")
+                    || trimmed.startsWith("Mode ")
+                    || trimmed.startsWith("[-]")) {
+                continue;
+            }
+            String[] parts = trimmed.split("\\s{2,}");
+            if (parts.length < 4) {
+                continue;
+            }
+            Map<String, Object> entry = new LinkedHashMap<>();
+            String mode = parts[0].trim();
+            String size = parts.length > 1 ? parts[1].trim() : "";
+            String type = parts.length > 2 ? parts[2].trim() : "";
+            String modified = parts.length > 4 ? parts[3].trim() : "";
+            String name = parts.length > 4 ? joinParts(parts, 4) : parts[parts.length - 1].trim();
+            if (name.isBlank()) {
+                continue;
+            }
+            entry.put("name", name);
+            entry.put("mode", mode);
+            entry.put("size", parseLong(size));
+            entry.put("sizeLabel", size);
+            entry.put("type", type);
+            entry.put("modified", modified);
+            entry.put("directory", type.toLowerCase(Locale.ROOT).contains("dir") || mode.startsWith("4") || ".".equals(name) || "..".equals(name));
+            entries.add(entry);
+        }
+        return entries;
+    }
+
+    private String joinParts(String[] parts, int start) {
+        StringBuilder builder = new StringBuilder();
+        for (int index = start; index < parts.length; index++) {
+            if (builder.length() > 0) {
+                builder.append("  ");
+            }
+            builder.append(parts[index].trim());
+        }
+        return builder.toString();
+    }
+
     private List<Map<String, Object>> normalizeHosts(List<Map<String, Object>> input, String fallbackTarget) {
         if (input == null || input.isEmpty()) {
             return List.of(Map.of("address", fallbackTarget, "ports", List.of()));
@@ -432,6 +642,48 @@ public class MetasploitService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Sesion no valida");
         }
         return value;
+    }
+
+    private String sanitizeRemotePath(String rawPath, boolean allowBlank) {
+        String value = rawPath == null ? "" : rawPath.trim();
+        if (value.isBlank()) {
+            if (allowBlank) {
+                return "";
+            }
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "La ruta remota es obligatoria");
+        }
+        if (value.length() > 260 || UNSAFE_REMOTE_PATH.matcher(value).find() || value.contains("\"")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Ruta remota no permitida");
+        }
+        return value;
+    }
+
+    private String quoteRemotePath(String path) {
+        return "\"" + path + "\"";
+    }
+
+    private String parentPath(String path) {
+        if (!hasText(path)) {
+            return "";
+        }
+        String value = path.replaceAll("[/\\\\]+$", "");
+        if (value.isBlank() || ".".equals(value)) {
+            return ".";
+        }
+        if (value.matches("^[A-Za-z]:$")) {
+            return value;
+        }
+        int slash = Math.max(value.lastIndexOf('/'), value.lastIndexOf('\\'));
+        if (slash < 0) {
+            return ".";
+        }
+        if (slash == 0) {
+            return value.substring(0, 1);
+        }
+        if (slash == 2 && value.charAt(1) == ':') {
+            return value.substring(0, 3);
+        }
+        return value.substring(0, slash);
     }
 
     private boolean isPrivateOrLocalTarget(String target) {
@@ -519,9 +771,21 @@ public class MetasploitService {
         }
     }
 
-    private void sleepBriefly() {
+    private long parseLong(Object value) {
         try {
-            Thread.sleep(500);
+            return Long.parseLong(String.valueOf(value));
+        } catch (Exception ex) {
+            return 0L;
+        }
+    }
+
+    private void sleepBriefly() {
+        sleepMillis(500);
+    }
+
+    private void sleepMillis(long millis) {
+        try {
+            Thread.sleep(millis);
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
         }
