@@ -1,8 +1,10 @@
 package com.caligo.backend.metasploit;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import org.msgpack.jackson.dataformat.MessagePackFactory;
+import org.msgpack.core.MessageBufferPacker;
+import org.msgpack.core.MessageFormat;
+import org.msgpack.core.MessagePack;
+import org.msgpack.core.MessageUnpacker;
+import org.msgpack.value.ValueType;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
@@ -15,6 +17,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -22,7 +25,6 @@ import java.util.Map;
 @Component
 public class MetasploitRpcClient {
 
-    private final ObjectMapper msgpackMapper = new ObjectMapper(new MessagePackFactory());
     private final HttpClient httpClient;
     private final String host;
     private final int port;
@@ -112,10 +114,7 @@ public class MetasploitRpcClient {
 
     private Map<String, Object> rpc(String method, Object... args) {
         try {
-            List<Object> payload = new ArrayList<>();
-            payload.add(method);
-            payload.addAll(List.of(args));
-            byte[] body = msgpackMapper.writeValueAsBytes(payload);
+            byte[] body = packPayload(method, args);
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create((ssl ? "https" : "http") + "://" + host + ":" + port + "/api/"))
                     .timeout(Duration.ofSeconds(timeoutSeconds))
@@ -126,8 +125,7 @@ public class MetasploitRpcClient {
             if (response.statusCode() >= 400) {
                 throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Metasploit RPC respondio " + response.statusCode());
             }
-            Map<String, Object> parsed = msgpackMapper.readValue(response.body(), new TypeReference<>() {
-            });
+            Map<String, Object> parsed = unpackResponse(response.body());
             if (Boolean.TRUE.equals(parsed.get("error"))) {
                 throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, String.valueOf(parsed.getOrDefault("error_message", "Error RPC de Metasploit")));
             }
@@ -140,6 +138,107 @@ public class MetasploitRpcClient {
             }
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Metasploit RPC no responde: " + sample(ex.getMessage(), 240));
         }
+    }
+
+    private byte[] packPayload(String method, Object... args) throws IOException {
+        try (MessageBufferPacker packer = MessagePack.newDefaultBufferPacker()) {
+            packer.packArrayHeader(1 + args.length);
+            packValue(packer, method);
+            for (Object arg : args) {
+                packValue(packer, arg);
+            }
+            packer.flush();
+            return packer.toByteArray();
+        }
+    }
+
+    private void packValue(MessageBufferPacker packer, Object value) throws IOException {
+        if (value == null) {
+            packer.packNil();
+        } else if (value instanceof String stringValue) {
+            packer.packString(stringValue);
+        } else if (value instanceof Boolean booleanValue) {
+            packer.packBoolean(booleanValue);
+        } else if (value instanceof Integer integerValue) {
+            packer.packInt(integerValue);
+        } else if (value instanceof Long longValue) {
+            packer.packLong(longValue);
+        } else if (value instanceof Number numberValue) {
+            packer.packDouble(numberValue.doubleValue());
+        } else if (value instanceof Map<?, ?> mapValue) {
+            packer.packMapHeader(mapValue.size());
+            for (Map.Entry<?, ?> entry : mapValue.entrySet()) {
+                packValue(packer, String.valueOf(entry.getKey()));
+                packValue(packer, entry.getValue());
+            }
+        } else if (value instanceof Collection<?> collectionValue) {
+            packer.packArrayHeader(collectionValue.size());
+            for (Object item : collectionValue) {
+                packValue(packer, item);
+            }
+        } else {
+            packer.packString(String.valueOf(value));
+        }
+    }
+
+    private Map<String, Object> unpackResponse(byte[] body) throws IOException {
+        try (MessageUnpacker unpacker = MessagePack.newDefaultUnpacker(body)) {
+            Object value = unpackValue(unpacker);
+            if (value instanceof Map<?, ?> mapValue) {
+                Map<String, Object> response = new LinkedHashMap<>();
+                for (Map.Entry<?, ?> entry : mapValue.entrySet()) {
+                    response.put(String.valueOf(entry.getKey()), entry.getValue());
+                }
+                return response;
+            }
+            throw new IOException("Respuesta RPC no valida");
+        }
+    }
+
+    private Object unpackValue(MessageUnpacker unpacker) throws IOException {
+        MessageFormat format = unpacker.getNextFormat();
+        ValueType type = format.getValueType();
+        return switch (type) {
+            case NIL -> {
+                unpacker.unpackNil();
+                yield null;
+            }
+            case BOOLEAN -> unpacker.unpackBoolean();
+            case INTEGER -> narrowNumber(unpacker.unpackLong());
+            case FLOAT -> unpacker.unpackDouble();
+            case STRING -> unpacker.unpackString();
+            case BINARY -> {
+                int length = unpacker.unpackBinaryHeader();
+                byte[] bytes = unpacker.readPayload(length);
+                yield bytes;
+            }
+            case ARRAY -> {
+                int length = unpacker.unpackArrayHeader();
+                List<Object> values = new ArrayList<>(length);
+                for (int i = 0; i < length; i++) {
+                    values.add(unpackValue(unpacker));
+                }
+                yield values;
+            }
+            case MAP -> {
+                int length = unpacker.unpackMapHeader();
+                Map<String, Object> values = new LinkedHashMap<>();
+                for (int i = 0; i < length; i++) {
+                    Object key = unpackValue(unpacker);
+                    Object value = unpackValue(unpacker);
+                    values.put(String.valueOf(key), value);
+                }
+                yield values;
+            }
+            case EXTENSION -> throw new IOException("Extension MessagePack no soportada");
+        };
+    }
+
+    private Number narrowNumber(long value) {
+        if (value >= Integer.MIN_VALUE && value <= Integer.MAX_VALUE) {
+            return (int) value;
+        }
+        return value;
     }
 
     private boolean isAuthError(Map<String, Object> response) {
