@@ -149,7 +149,7 @@ public class ServerToolUpdateService {
         String version = "";
         if (installed) {
             CommandResult versionResult = runCommand(List.of("sh", "-lc", definition.versionCommand()), PROBE_TIMEOUT);
-            version = normalizeVersion(firstNonBlank(versionResult.output()));
+            version = normalizeVersion(bestVersionLine(versionResult.output()));
         }
         return new ToolSnapshot(
                 definition.id(),
@@ -243,6 +243,29 @@ public class ServerToolUpdateService {
             }
         }
         return null;
+    }
+
+    private static String bestVersionLine(String output) {
+        if (output == null) {
+            return null;
+        }
+        List<String> lines = output.lines()
+                .map(ServerToolUpdateService::stripAnsi)
+                .map(String::trim)
+                .filter(line -> !line.isBlank())
+                .toList();
+        if (lines.isEmpty()) {
+            return null;
+        }
+        return lines.stream()
+                .filter(line -> line.matches("(?i).*version.*\\d.*"))
+                .findFirst()
+                .or(() -> lines.stream().filter(line -> line.matches(".*\\d+\\.\\d+.*")).findFirst())
+                .orElse(lines.getFirst());
+    }
+
+    private static String stripAnsi(String value) {
+        return value == null ? "" : value.replaceAll("\\u001B\\[[;\\d]*m", "");
     }
 
     private static String normalizeVersion(String line) {
