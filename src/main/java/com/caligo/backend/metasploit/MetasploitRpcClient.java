@@ -15,6 +15,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -210,7 +211,7 @@ public class MetasploitRpcClient {
             case BINARY -> {
                 int length = unpacker.unpackBinaryHeader();
                 byte[] bytes = unpacker.readPayload(length);
-                yield bytes;
+                yield new String(bytes, StandardCharsets.UTF_8);
             }
             case ARRAY -> {
                 int length = unpacker.unpackArrayHeader();
