@@ -249,7 +249,7 @@ public class ServerToolUpdateService {
         if (line == null) {
             return "";
         }
-        return sample(line.replaceAll("\\s+", " ").trim(), 160);
+        return inlineSample(line.replaceAll("\\s+", " ").trim(), 150);
     }
 
     private static String sample(String value, int maxChars) {
@@ -260,6 +260,13 @@ public class ServerToolUpdateService {
             return value;
         }
         return value.substring(0, Math.max(0, maxChars - 18)) + "\n[...truncado...]";
+    }
+
+    private static String inlineSample(String value, int maxChars) {
+        if (value == null || value.length() <= maxChars) {
+            return value == null ? "" : value;
+        }
+        return value.substring(0, Math.max(0, maxChars - 3)) + "...";
     }
 
     private static ToolDefinition aptTool(
