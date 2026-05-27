@@ -24,7 +24,7 @@ mvn test
 mvn -DskipTests package
 ```
 
-`docker compose up -d` starts PostgreSQL 16 for local development. `mvn test`
+`docker compose up -d` starts MariaDB 11 for local development. `mvn test`
 runs the JUnit test suite. `mvn -DskipTests package` creates the runnable jar in
 `target/`.
 
@@ -48,8 +48,26 @@ Never commit `.env`, real JWT secrets, database passwords, dumps with private
 data or production credentials. Any future integration with offensive security
 tools must be audited and scoped to controlled, authorized environments.
 
+## Backend Deployment Workflow
+
+When backend code or backend configuration changes, keep the LAN backend ready
+for local frontend testing. The expected flow is:
+
+1. Run the relevant backend verification locally, normally `mvn test` or
+   `mvn -DskipTests package` depending on the change.
+2. Commit only backend changes in this repository.
+3. Push `back-caligo` to `origin`.
+4. SSH into the Caligo server, pull the backend repo, rebuild/restart the
+   backend service and verify `/api/health`.
+
+Do not deploy the frontend unless the user explicitly asks for it; the frontend
+is normally tested locally with Vite.
+
+Current project context has used `192.168.0.253` as the Caligo server. If a task
+mentions `192.168.0.254`, confirm the target before deploying because the local
+credentials file maps that LAN address to another application server.
+
 ## Commit & Pull Request Guidelines
 
 This repo has no commit history yet. Use short Spanish descriptive commits and
 keep backend changes separate from `front-caligo`.
-

@@ -70,4 +70,3 @@ public class AuthController {
         return AuthResponse.bearer(jwtService.generateToken(user), jwtService.expirationSeconds(), user);
     }
 }
-

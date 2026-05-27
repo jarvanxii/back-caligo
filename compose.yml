@@ -1,22 +1,20 @@
 services:
-  postgres:
-    image: postgres:16-alpine
-    container_name: caligo-postgres
+  mariadb:
+    image: mariadb:11.4
+    container_name: caligo-mariadb
     restart: unless-stopped
     environment:
-      POSTGRES_DB: caligo
-      POSTGRES_USER: caligo
-      POSTGRES_PASSWORD: caligo_dev
+      MARIADB_DATABASE: ${CALIGO_DB_NAME:-caligo}
+      MARIADB_ROOT_PASSWORD: ${CALIGO_DB_ROOT_PASSWORD:-change-me-local}
     ports:
-      - "5432:5432"
+      - "3306:3306"
     volumes:
-      - caligo-postgres-data:/var/lib/postgresql/data
+      - caligo-mariadb-data:/var/lib/mysql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U caligo -d caligo"]
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
       interval: 10s
       timeout: 5s
       retries: 5
 
 volumes:
-  caligo-postgres-data:
-
+  caligo-mariadb-data:

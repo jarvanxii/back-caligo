@@ -2,6 +2,6 @@ target/
 .idea/
 *.iml
 .env
+.caligo/
 .DS_Store
 *.log
-
