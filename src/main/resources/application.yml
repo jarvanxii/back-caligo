@@ -53,3 +53,11 @@ caligo:
       password: ${CALIGO_GVM_PASSWORD:}
       poll-seconds: ${CALIGO_GVM_POLL_SECONDS:10}
       timeout-seconds: ${CALIGO_GVM_TIMEOUT_SECONDS:7200}
+  metasploit:
+    rpc:
+      host: ${CALIGO_MSF_RPC_HOST:127.0.0.1}
+      port: ${CALIGO_MSF_RPC_PORT:55552}
+      ssl: ${CALIGO_MSF_RPC_SSL:false}
+      username: ${CALIGO_MSF_RPC_USER:caligo}
+      password: ${CALIGO_MSF_RPC_PASSWORD:}
+      timeout-seconds: ${CALIGO_MSF_RPC_TIMEOUT_SECONDS:20}

@@ -2,7 +2,7 @@
 
 Backend Spring Boot de Caligo. Expone una API REST con JWT, Flyway y MariaDB para ejecutar herramientas de laboratorio de ciberseguridad en entornos controlados.
 
-Los modulos funcionales actuales son **URLs** y **Reconocimiento activo**. URLs cubre DNS, inspeccion URL, HTTP, TLS, reputacion, historial, archivos publicos, endpoints pasivos e inventario de herramientas locales. Reconocimiento activo cubre jobs de **Nmap** y adaptador **OpenVAS/GVM** con JWT, auditoria, validacion de alcance y progreso.
+Los modulos funcionales actuales son **URLs**, **Reconocimiento activo** y **Metasploit**. URLs cubre DNS, inspeccion URL, HTTP, TLS, reputacion, historial, archivos publicos, endpoints pasivos e inventario de herramientas locales. Reconocimiento activo cubre jobs de **Nmap** y adaptador **OpenVAS/GVM** con JWT, auditoria, validacion de alcance y progreso. Metasploit expone RPC local para discovery asistido, recomendaciones de modulos, ejecucion controlada y gestion de sesiones de laboratorio.
 
 ## Stack
 
@@ -20,6 +20,7 @@ Los modulos funcionales actuales son **URLs** y **Reconocimiento activo**. URLs 
 - Spring Actuator.
 - Nmap CLI en el servidor.
 - Greenbone/OpenVAS via `gvm-cli` cuando GVM esta inicializado.
+- Metasploit Framework via MessagePack RPC (`msgrpc`) escuchando solo en localhost.
 
 ## Estructura
 
@@ -34,6 +35,7 @@ back-caligo/
     config/        Seguridad, CORS, filtro JWT y bootstrap admin
     health/        Endpoints de salud
     module/        Catalogo de modulos visibles
+    metasploit/   Cliente RPC, recomendaciones, ejecucion de modulos y sesiones
     recon/         Jobs Nmap/OpenVAS, capacidades, progreso y parseo de resultados
     security/      JWT y UserDetailsService
     urls/          Motor de inteligencia URL/DNS/HTTP/TLS
@@ -117,6 +119,12 @@ http://localhost:8080
 | `CALIGO_GVM_PASSWORD` | sin configurar | Password GMP/OpenVAS. |
 | `CALIGO_GVM_POLL_SECONDS` | `10` | Intervalo de polling de tareas OpenVAS. |
 | `CALIGO_GVM_TIMEOUT_SECONDS` | `7200` | Timeout maximo de job OpenVAS. |
+| `CALIGO_MSF_RPC_HOST` | `127.0.0.1` | Host local del RPC MessagePack de Metasploit. |
+| `CALIGO_MSF_RPC_PORT` | `55552` | Puerto local del plugin `msgrpc`. |
+| `CALIGO_MSF_RPC_SSL` | `false` | Debe coincidir con el modo SSL del plugin `msgrpc`. |
+| `CALIGO_MSF_RPC_USER` | `caligo` | Usuario RPC de Metasploit. |
+| `CALIGO_MSF_RPC_PASSWORD` | sin configurar | Password RPC generada fuera del repo. |
+| `CALIGO_MSF_RPC_TIMEOUT_SECONDS` | `20` | Timeout de llamadas RPC. |
 
 ## Esquema MariaDB
 
@@ -188,7 +196,7 @@ Historial y trazabilidad de herramientas activas.
 | --- | --- | --- |
 | `id` | `char(36)` | UUID primario del job. |
 | `username` | `varchar(80)` | Usuario que lanza la herramienta. |
-| `tool` | `varchar(40)` | `nmap` u `openvas`. |
+| `tool` | `varchar(40)` | `nmap`, `openvas` o `metasploit`. |
 | `target` | `varchar(240)` | Objetivo validado. |
 | `status` | `varchar(30)` | `QUEUED`, `RUNNING`, `COMPLETED`, `FAILED`, `CANCELLED`. |
 | `progress` | `integer` | Progreso 0-100. |
@@ -263,6 +271,16 @@ Invoke-RestMethod `
 | `POST` | `/api/recon/openvas/scans` | Si | Crea tarea OpenVAS via GMP si GVM esta listo. |
 | `GET` | `/api/recon/openvas/scans/{id}` | Si | Estado, progreso y hallazgos OpenVAS. |
 | `GET` | `/api/recon/openvas/scans/{id}/report.pdf` | Si | Informe PDF descargable con logo Caligo. |
+| `GET` | `/api/metasploit/capabilities` | Si | Estado RPC, payloads por defecto y politica de alcance. |
+| `POST` | `/api/metasploit/recommendations` | Si | Genera recomendaciones de modulos desde hosts/puertos detectados. |
+| `GET` | `/api/metasploit/modules/search` | Si | Busca modulos por texto y tipo. |
+| `GET` | `/api/metasploit/modules/info` | Si | Info, opciones y payloads compatibles de un modulo. |
+| `POST` | `/api/metasploit/modules/execute` | Si | Ejecuta un modulo via RPC con datastore validado. |
+| `GET` | `/api/metasploit/jobs` | Si | Jobs vivos en Metasploit. |
+| `GET` | `/api/metasploit/jobs/{id}` | Si | Job guardado por Caligo. |
+| `GET` | `/api/metasploit/sessions` | Si | Sesiones activas. |
+| `POST` | `/api/metasploit/sessions/{id}/command` | Si | Envia comando a sesion shell o meterpreter. |
+| `DELETE` | `/api/metasploit/sessions/{id}` | Si | Cierra una sesion. |
 
 Peticion URL:
 
@@ -372,6 +390,77 @@ En el servidor 2, los logs de sincronizacion de feeds se dejan en:
 /var/log/caligo/gvm-feed-sync.log
 ```
 
+### Metasploit
+
+Caligo usa la API MessagePack de Metasploit mediante el plugin `msgrpc`. El
+servicio debe quedar vinculado a `127.0.0.1`, con credenciales generadas fuera
+del repo y leidas por el backend desde `/etc/caligo/back.env`.
+
+Instalacion recomendada en Linux:
+
+```bash
+curl https://raw.githubusercontent.com/rapid7/metasploit-omnibus/master/config/templates/metasploit-framework-wrappers/msfupdate.erb > msfinstall
+chmod 755 msfinstall
+sudo ./msfinstall
+```
+
+Se evita pasar la password como argumento de proceso. Para ello se crea un
+resource file protegido:
+
+```text
+/etc/caligo/msgrpc.rc
+```
+
+Contenido esperado del resource file, con password real fuera de Git:
+
+```text
+load msgrpc ServerHost=127.0.0.1 ServerPort=55552 User=caligo Pass=<password-random-local> SSL=false
+sleep 31536000
+```
+
+Servicio systemd esperado:
+
+```ini
+[Unit]
+Description=Metasploit RPC for Caligo
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=fran
+Group=www-data
+WorkingDirectory=/home/fran
+EnvironmentFile=/etc/caligo/back.env
+Environment=DISABLE_BOOTSNAP=1
+ExecStart=/usr/bin/msfconsole -q -n -r /etc/caligo/msgrpc.rc
+Restart=on-failure
+RestartSec=8
+NoNewPrivileges=true
+StandardOutput=null
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Variables minimas:
+
+```bash
+CALIGO_MSF_RPC_HOST=127.0.0.1
+CALIGO_MSF_RPC_PORT=55552
+CALIGO_MSF_RPC_SSL=false
+CALIGO_MSF_RPC_USER=caligo
+CALIGO_MSF_RPC_PASSWORD=<password-random-local>
+```
+
+La API bloquea objetivos publicos y solo acepta hosts privados/locales para
+Metasploit. Las llamadas quedan auditadas (`METASPLOIT_MODULE_EXECUTE`,
+`METASPLOIT_SESSION_COMMAND`, `METASPLOIT_SESSION_STOP`) y el backend no usa
+sudo ni credenciales hardcodeadas. Para pruebas manuales desde el front, primero
+lanza discovery Nmap, revisa las recomendaciones y despues ejecuta un modulo
+contra una maquina vulnerable de laboratorio.
+
 ## Herramientas de servidor
 
 El inventario de URLs detecta estas herramientas cuando existen en `PATH`:
@@ -393,6 +482,9 @@ Herramientas instaladas en el servidor 2 durante el primer despliegue: `nmap`, `
 
 Herramientas instaladas para reconocimiento activo: `nmap`, `gvm`, `gvmd`, `openvas-scanner`, `ospd-openvas` y `gvm-tools`. Las herramientas activas deben ejecutarse siempre con alcance autorizado, trazabilidad, limites y registro de usuario.
 
+Herramientas instaladas para validacion controlada: `metasploit-framework` con
+`msgrpc` gestionado por systemd y expuesto solo en localhost.
+
 ## Despliegue servidor
 
 Servidor asignado: `192.168.0.253`.
@@ -413,6 +505,11 @@ CALIGO_DB_PASSWORD=<password-servidor-de-CREDENCIALES>
 CALIGO_JWT_SECRET=<secreto-largo>
 CALIGO_CORS_ALLOWED_ORIGINS=http://localhost:5174,http://127.0.0.1:5174,http://192.168.0.17:5174
 CALIGO_SERVER_PORT=8080
+CALIGO_MSF_RPC_HOST=127.0.0.1
+CALIGO_MSF_RPC_PORT=55552
+CALIGO_MSF_RPC_SSL=false
+CALIGO_MSF_RPC_USER=caligo
+CALIGO_MSF_RPC_PASSWORD=<password-random-local>
 ```
 
 No guardar este archivo en Git.
