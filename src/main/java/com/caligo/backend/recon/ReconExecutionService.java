@@ -689,15 +689,27 @@ public class ReconExecutionService {
         for (int i = 0; i < nodes.getLength(); i++) {
             Element item = (Element) nodes.item(i);
             Map<String, String> map = new LinkedHashMap<>();
+            String name = directChildText(item, "name");
             map.put("id", item.getAttribute("id"));
-            map.put("name", firstText(item, "name"));
-            map.put("label", hasText(firstText(item, "name")) ? firstText(item, "name") : item.getAttribute("id"));
+            map.put("name", name);
+            map.put("label", hasText(name) ? name : item.getAttribute("id"));
             map.put("description", "");
             if (hasText(map.get("id"))) {
                 values.add(map);
             }
         }
         return values;
+    }
+
+    private String directChildText(Element element, String tag) {
+        NodeList children = element.getChildNodes();
+        for (int i = 0; i < children.getLength(); i++) {
+            Node child = children.item(i);
+            if (child instanceof Element childElement && tag.equals(childElement.getTagName())) {
+                return text(childElement);
+            }
+        }
+        return "";
     }
 
     private String responseId(String xml, String tag) throws Exception {
