@@ -282,6 +282,12 @@ Invoke-RestMethod `
 | `GET` | `/api/metasploit/jobs/{id}` | Si | Job guardado por Caligo. |
 | `GET` | `/api/metasploit/sessions` | Si | Sesiones activas. |
 | `POST` | `/api/metasploit/sessions/{id}/command` | Si | Envia comando a sesion shell o meterpreter. |
+| `POST` | `/api/metasploit/sessions/{id}/workspace` | Si | Carga contexto grafico inicial de una sesion Meterpreter. |
+| `POST` | `/api/metasploit/sessions/{id}/fs/list` | Si | Lista directorios remotos mediante Meterpreter. |
+| `POST` | `/api/metasploit/sessions/{id}/fs/read` | Si | Lee una muestra truncada de un fichero remoto. |
+| `POST` | `/api/metasploit/sessions/{id}/fs/mkdir` | Si | Crea un directorio remoto y refresca el listado. |
+| `POST` | `/api/metasploit/sessions/{id}/fs/delete` | Si | Borra fichero o directorio vacio remoto. |
+| `POST` | `/api/metasploit/sessions/{id}/fs/rename` | Si | Renombra o mueve una ruta remota. |
 | `DELETE` | `/api/metasploit/sessions/{id}` | Si | Cierra una sesion. |
 
 Peticion URL:
@@ -458,10 +464,19 @@ CALIGO_MSF_RPC_PASSWORD=<password-random-local>
 
 La API bloquea objetivos publicos y solo acepta hosts privados/locales para
 Metasploit. Las llamadas quedan auditadas (`METASPLOIT_MODULE_EXECUTE`,
-`METASPLOIT_SESSION_COMMAND`, `METASPLOIT_SESSION_STOP`) y el backend no usa
+`METASPLOIT_SESSION_COMMAND`, `METASPLOIT_SESSION_WORKSPACE`,
+`METASPLOIT_SESSION_FILE_LIST`, `METASPLOIT_SESSION_FILE_READ`,
+`METASPLOIT_SESSION_MKDIR`, `METASPLOIT_SESSION_FILE_DELETE`,
+`METASPLOIT_SESSION_FILE_RENAME`, `METASPLOIT_SESSION_STOP`) y el backend no usa
 sudo ni credenciales hardcodeadas. Para pruebas manuales desde el front, primero
 lanza discovery Nmap, revisa las recomendaciones y despues ejecuta un modulo
 contra una maquina vulnerable de laboratorio.
+
+El explorador grafico solo se habilita sobre sesiones Meterpreter. Desde esa
+sesion permite listar rutas, leer muestras de ficheros, crear carpetas,
+renombrar/mover rutas, borrar ficheros o directorios vacios y ejecutar comandos
+en consola. Las rutas remotas se validan para evitar saltos de linea,
+metacaracteres de shell y entradas excesivamente largas.
 
 ## Herramientas de servidor
 
