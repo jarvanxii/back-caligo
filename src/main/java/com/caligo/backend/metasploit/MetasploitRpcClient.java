@@ -74,7 +74,18 @@ public class MetasploitRpcClient {
         List<Object> fullArgs = new ArrayList<>();
         fullArgs.add(activeToken);
         fullArgs.addAll(List.of(args));
-        Object response = rpc(method, fullArgs.toArray());
+        Object response;
+        try {
+            response = rpc(method, fullArgs.toArray());
+        } catch (ResponseStatusException ex) {
+            if (!isUnauthorized(ex)) {
+                throw ex;
+            }
+            token = null;
+            activeToken = ensureToken();
+            fullArgs.set(0, activeToken);
+            response = rpc(method, fullArgs.toArray());
+        }
         if (response instanceof Map<?, ?> mapValue && isAuthError(stringMap(mapValue))) {
             token = null;
             activeToken = ensureToken();
@@ -261,6 +272,11 @@ public class MetasploitRpcClient {
         String errorClass = String.valueOf(response.getOrDefault("error_class", ""));
         String message = String.valueOf(response.getOrDefault("error_message", ""));
         return errorClass.toLowerCase().contains("auth") || message.toLowerCase().contains("token");
+    }
+
+    private boolean isUnauthorized(ResponseStatusException ex) {
+        String reason = String.valueOf(ex.getReason());
+        return ex.getStatusCode().value() == HttpStatus.SERVICE_UNAVAILABLE.value() && reason.contains("401");
     }
 
     private boolean hasText(String value) {
