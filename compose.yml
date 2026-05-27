@@ -1,0 +1,22 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: caligo-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: caligo
+      POSTGRES_USER: caligo
+      POSTGRES_PASSWORD: caligo_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - caligo-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U caligo -d caligo"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  caligo-postgres-data:
+
