@@ -56,6 +56,14 @@ public class MetasploitRpcClient {
     }
 
     public Map<String, Object> call(String method, Object... args) {
+        Object response = callValue(method, args);
+        if (response instanceof Map<?, ?> mapValue) {
+            return stringMap(mapValue);
+        }
+        throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Metasploit RPC devolvio una respuesta no estructurada");
+    }
+
+    public Object callValue(String method, Object... args) {
         if (!hasText(password)) {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Credenciales RPC de Metasploit no configuradas");
         }
@@ -66,8 +74,8 @@ public class MetasploitRpcClient {
         List<Object> fullArgs = new ArrayList<>();
         fullArgs.add(activeToken);
         fullArgs.addAll(List.of(args));
-        Map<String, Object> response = rpc(method, fullArgs.toArray());
-        if (isAuthError(response)) {
+        Object response = rpc(method, fullArgs.toArray());
+        if (response instanceof Map<?, ?> mapValue && isAuthError(stringMap(mapValue))) {
             token = null;
             activeToken = ensureToken();
             fullArgs.set(0, activeToken);
@@ -103,7 +111,11 @@ public class MetasploitRpcClient {
         if (hasText(token)) {
             return token;
         }
-        Map<String, Object> login = rpc("auth.login", username, password);
+        Object loginRaw = rpc("auth.login", username, password);
+        if (!(loginRaw instanceof Map<?, ?> loginMap)) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Metasploit RPC devolvio un login no valido");
+        }
+        Map<String, Object> login = stringMap(loginMap);
         Object result = login.get("result");
         Object value = login.get("token");
         if (!"success".equals(String.valueOf(result)) || value == null) {
@@ -113,7 +125,7 @@ public class MetasploitRpcClient {
         return token;
     }
 
-    private Map<String, Object> rpc(String method, Object... args) {
+    private Object rpc(String method, Object... args) {
         try {
             byte[] body = packPayload(method, args);
             HttpRequest request = HttpRequest.newBuilder()
@@ -126,9 +138,12 @@ public class MetasploitRpcClient {
             if (response.statusCode() >= 400) {
                 throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Metasploit RPC respondio " + response.statusCode());
             }
-            Map<String, Object> parsed = unpackResponse(response.body());
-            if (Boolean.TRUE.equals(parsed.get("error"))) {
-                throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, String.valueOf(parsed.getOrDefault("error_message", "Error RPC de Metasploit")));
+            Object parsed = unpackResponse(response.body());
+            if (parsed instanceof Map<?, ?> mapValue) {
+                Map<String, Object> parsedMap = stringMap(mapValue);
+                if (Boolean.TRUE.equals(parsedMap.get("error"))) {
+                    throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, String.valueOf(parsedMap.getOrDefault("error_message", "Error RPC de Metasploit")));
+                }
             }
             return parsed;
         } catch (ResponseStatusException ex) {
@@ -182,18 +197,18 @@ public class MetasploitRpcClient {
         }
     }
 
-    private Map<String, Object> unpackResponse(byte[] body) throws IOException {
+    private Object unpackResponse(byte[] body) throws IOException {
         try (MessageUnpacker unpacker = MessagePack.newDefaultUnpacker(body)) {
-            Object value = unpackValue(unpacker);
-            if (value instanceof Map<?, ?> mapValue) {
-                Map<String, Object> response = new LinkedHashMap<>();
-                for (Map.Entry<?, ?> entry : mapValue.entrySet()) {
-                    response.put(String.valueOf(entry.getKey()), entry.getValue());
-                }
-                return response;
-            }
-            throw new IOException("Respuesta RPC no valida");
+            return unpackValue(unpacker);
         }
+    }
+
+    private Map<String, Object> stringMap(Map<?, ?> mapValue) {
+        Map<String, Object> response = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : mapValue.entrySet()) {
+            response.put(String.valueOf(entry.getKey()), entry.getValue());
+        }
+        return response;
     }
 
     private Object unpackValue(MessageUnpacker unpacker) throws IOException {

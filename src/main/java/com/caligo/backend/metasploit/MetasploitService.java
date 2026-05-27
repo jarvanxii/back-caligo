@@ -114,7 +114,7 @@ public class MetasploitService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Tipo de modulo no permitido");
         }
         String rpcQuery = (hasText(moduleType) ? "type:" + moduleType + " " : "") + cleanQuery;
-        Map<String, Object> raw = rpc.call("module.search", rpcQuery.trim());
+        Object raw = rpc.callValue("module.search", rpcQuery.trim());
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("query", rpcQuery.trim());
         response.put("modules", normalizeModuleSearch(raw).stream().limit(120).toList());
@@ -130,7 +130,7 @@ public class MetasploitService {
         response.put("info", rpc.call("module.info", moduleType, stripTypePrefix(moduleType, moduleName)));
         response.put("options", rpc.call("module.options", moduleType, stripTypePrefix(moduleType, moduleName)));
         if ("exploit".equals(moduleType)) {
-            response.put("payloads", rpc.call("module.compatible_payloads", stripTypePrefix(moduleType, moduleName)));
+            response.put("payloads", rpc.callValue("module.compatible_payloads", stripTypePrefix(moduleType, moduleName)));
         }
         return response;
     }
@@ -302,9 +302,18 @@ public class MetasploitService {
         return item;
     }
 
-    private List<Map<String, Object>> normalizeModuleSearch(Map<String, Object> raw) {
-        Object modules = raw.get("modules");
-        if (modules instanceof List<?> list) {
+    private List<Map<String, Object>> normalizeModuleSearch(Object raw) {
+        if (raw instanceof Map<?, ?> map) {
+            Object modules = map.get("modules");
+            if (modules instanceof List<?> list) {
+                return list.stream()
+                        .filter(Map.class::isInstance)
+                        .map(this::copyMap)
+                        .toList();
+            }
+            return List.of();
+        }
+        if (raw instanceof List<?> list) {
             return list.stream()
                     .filter(Map.class::isInstance)
                     .map(this::copyMap)
