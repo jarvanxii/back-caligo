@@ -312,6 +312,21 @@ getcap "$(command -v nmap)"
 Cuando esas opciones estan activas, el backend anade `--privileged` para que
 Nmap use esas capabilities sin ejecutar el proceso como root.
 
+Si el servicio systemd bloquea la herencia de capabilities, crear este override:
+
+```bash
+sudo mkdir -p /etc/systemd/system/caligo-back.service.d
+sudo tee /etc/systemd/system/caligo-back.service.d/20-nmap-capabilities.conf >/dev/null <<'EOF'
+[Service]
+NoNewPrivileges=false
+EOF
+sudo systemctl daemon-reload
+sudo systemctl restart caligo-back
+```
+
+El servicio sigue ejecutandose como `fran`; no hay password hardcodeada ni sudo
+desde el backend.
+
 Cada job Nmap puede exportarse a PDF. El informe incluye el logo de login de Caligo desde `src/main/resources/reports/logo-login.png`, parametros, resumen, puertos, servicios y salida tecnica relevante.
 
 ### OpenVAS/GVM
