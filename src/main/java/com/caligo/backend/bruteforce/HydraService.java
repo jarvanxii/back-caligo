@@ -19,7 +19,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.FileVisitOption;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -125,6 +124,7 @@ public class HydraService {
                 option("combo", "Combo login:pass", "Fichero colon-separated compatible con -C.")
         ));
         response.put("wordlists", wordlists());
+        response.put("wordlistRoots", wordlistRoots.stream().map(Path::toString).toList());
         Map<String, Object> defaults = new LinkedHashMap<>();
         defaults.put("target", "192.168.0.1");
         defaults.put("service", "ssh");
@@ -506,26 +506,34 @@ public class HydraService {
     private List<Map<String, Object>> wordlists() {
         List<Map<String, Object>> values = new ArrayList<>();
         for (Path root : wordlistRoots) {
-            if (!Files.isDirectory(root)) {
-                continue;
-            }
-            try (Stream<Path> stream = Files.walk(root, 4, FileVisitOption.FOLLOW_LINKS)) {
-                stream.filter(Files::isRegularFile)
-                        .filter(this::looksLikeWordlist)
-                        .limit(160)
-                        .forEach(path -> {
-                            Map<String, Object> item = new LinkedHashMap<>();
-                            item.put("path", path.toString());
-                            item.put("label", root.relativize(path).toString());
-                            item.put("sizeBytes", size(path));
-                            item.put("root", root.toString());
-                            values.add(item);
-                        });
-            } catch (IOException ignored) {
-                // Some distro wordlist folders contain unreadable entries. Skip them in capabilities.
-            }
+            collectWordlists(root, root, values, 0);
         }
         return values;
+    }
+
+    private void collectWordlists(Path root, Path current, List<Map<String, Object>> values, int depth) {
+        if (values.size() >= 160 || depth > 4 || !Files.isDirectory(current) || !Files.isReadable(current)) {
+            return;
+        }
+        try (Stream<Path> stream = Files.list(current)) {
+            for (Path path : stream.toList()) {
+                if (values.size() >= 160) {
+                    return;
+                }
+                if (Files.isRegularFile(path) && Files.isReadable(path) && looksLikeWordlist(path)) {
+                    Map<String, Object> item = new LinkedHashMap<>();
+                    item.put("path", path.toString());
+                    item.put("label", root.relativize(path).toString());
+                    item.put("sizeBytes", size(path));
+                    item.put("root", root.toString());
+                    values.add(item);
+                } else if (Files.isDirectory(path) && !Files.isSymbolicLink(path)) {
+                    collectWordlists(root, path, values, depth + 1);
+                }
+            }
+        } catch (Exception ignored) {
+            // Some distro wordlist folders contain unreadable entries. Skip them in capabilities.
+        }
     }
 
     private boolean looksLikeWordlist(Path path) {
