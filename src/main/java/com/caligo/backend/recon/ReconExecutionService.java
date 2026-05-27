@@ -428,6 +428,9 @@ public class ReconExecutionService {
         command.add("--stats-every");
         command.add("5s");
         command.add("--reason");
+        if (Boolean.TRUE.equals(request.osDetection()) || Boolean.TRUE.equals(request.traceroute())) {
+            command.add("--privileged");
+        }
 
         if ("discovery".equals(profile)) {
             command.add("-sn");

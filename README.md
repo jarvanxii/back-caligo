@@ -300,6 +300,18 @@ Peticion URL:
 
 El backend ejecuta Nmap con `ProcessBuilder`, no con shell. Por defecto bloquea objetivos publicos y solo permite rangos privados/locales como `192.168.0.0/24`, `10.0.0.5`, `127.0.0.1` o `host.local`. El progreso se extrae de `--stats-every 5s` cuando Nmap lo emite.
 
+Las opciones `OS detect` y `Traceroute` necesitan privilegios de red. No se
+hardcodean credenciales ni se usa sudo desde la aplicacion; el servidor debe
+dar capabilities al binario Nmap:
+
+```bash
+sudo setcap cap_net_raw,cap_net_admin,cap_net_bind_service+eip "$(command -v nmap)"
+getcap "$(command -v nmap)"
+```
+
+Cuando esas opciones estan activas, el backend anade `--privileged` para que
+Nmap use esas capabilities sin ejecutar el proceso como root.
+
 Cada job Nmap puede exportarse a PDF. El informe incluye el logo de login de Caligo desde `src/main/resources/reports/logo-login.png`, parametros, resumen, puertos, servicios y salida tecnica relevante.
 
 ### OpenVAS/GVM
