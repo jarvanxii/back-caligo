@@ -2,7 +2,7 @@
 
 Backend Spring Boot de Caligo. Expone una API REST con JWT, Flyway y MariaDB para ejecutar herramientas de laboratorio de ciberseguridad en entornos controlados.
 
-Los modulos funcionales actuales son **URLs**, **Reconocimiento activo** y **Metasploit**. URLs cubre DNS, inspeccion URL, HTTP, TLS, reputacion, historial, archivos publicos, endpoints pasivos e inventario de herramientas locales. Reconocimiento activo cubre jobs de **Nmap** y adaptador **OpenVAS/GVM** con JWT, auditoria, validacion de alcance y progreso. Metasploit expone RPC local para discovery asistido, recomendaciones de modulos, ejecucion controlada y gestion de sesiones de laboratorio.
+Los modulos funcionales actuales son **URLs**, **Reconocimiento activo**, **Metasploit** y **Fuerza bruta controlada**. URLs cubre DNS, inspeccion URL, HTTP, TLS, reputacion, historial, archivos publicos, endpoints pasivos e inventario de herramientas locales. Reconocimiento activo cubre jobs de **Nmap** y adaptador **OpenVAS/GVM** con JWT, auditoria, validacion de alcance y progreso. Metasploit expone RPC local para discovery asistido, recomendaciones de modulos, ejecucion controlada y gestion de sesiones de laboratorio. Fuerza bruta integra **Hydra** con alcance privado/local, fuentes de credenciales del servidor y trazas redaccionadas.
 
 ## Stack
 
@@ -21,6 +21,7 @@ Los modulos funcionales actuales son **URLs**, **Reconocimiento activo** y **Met
 - Nmap CLI en el servidor.
 - Greenbone/OpenVAS via `gvm-cli` cuando GVM esta inicializado.
 - Metasploit Framework via MessagePack RPC (`msgrpc`) escuchando solo en localhost.
+- Hydra CLI para simulaciones de fuerza bruta en laboratorio.
 
 ## Estructura
 
@@ -31,6 +32,7 @@ back-caligo/
   src/main/java/com/caligo/backend/
     auth/          Login, registro y DTOs de autenticacion
     audit/         Eventos de auditoria
+    bruteforce/    Integracion Hydra, capacidades, jobs y parseo de credenciales
     common/        Manejo comun de errores REST
     config/        Seguridad, CORS, filtro JWT y bootstrap admin
     health/        Endpoints de salud
@@ -119,6 +121,11 @@ http://localhost:8080
 | `CALIGO_GVM_PASSWORD` | sin configurar | Password GMP/OpenVAS. |
 | `CALIGO_GVM_POLL_SECONDS` | `10` | Intervalo de polling de tareas OpenVAS. |
 | `CALIGO_GVM_TIMEOUT_SECONDS` | `7200` | Timeout maximo de job OpenVAS. |
+| `CALIGO_BRUTEFORCE_ALLOW_EXTERNAL_TARGETS` | `false` | Si `false`, Hydra solo acepta objetivos privados/locales. |
+| `CALIGO_BRUTEFORCE_MAX_OUTPUT_BYTES` | `1048576` | Limite de salida capturada por proceso Hydra. |
+| `CALIGO_HYDRA_BINARY` | `hydra` | Binario Hydra. |
+| `CALIGO_HYDRA_TIMEOUT_SECONDS` | `1800` | Timeout maximo de job Hydra. |
+| `CALIGO_HYDRA_WORDLIST_ROOTS` | `/opt/caligo/wordlists,/usr/share/wordlists` | Raices permitidas para wordlists del servidor. |
 | `CALIGO_MSF_RPC_HOST` | `127.0.0.1` | Host local del RPC MessagePack de Metasploit. |
 | `CALIGO_MSF_RPC_PORT` | `55552` | Puerto local del plugin `msgrpc`. |
 | `CALIGO_MSF_RPC_SSL` | `false` | Debe coincidir con el modo SSL del plugin `msgrpc`. |
@@ -196,7 +203,7 @@ Historial y trazabilidad de herramientas activas.
 | --- | --- | --- |
 | `id` | `char(36)` | UUID primario del job. |
 | `username` | `varchar(80)` | Usuario que lanza la herramienta. |
-| `tool` | `varchar(40)` | `nmap`, `openvas` o `metasploit`. |
+| `tool` | `varchar(40)` | `nmap`, `openvas`, `metasploit` o `hydra`. |
 | `target` | `varchar(240)` | Objetivo validado. |
 | `status` | `varchar(30)` | `QUEUED`, `RUNNING`, `COMPLETED`, `FAILED`, `CANCELLED`. |
 | `progress` | `integer` | Progreso 0-100. |
@@ -271,6 +278,10 @@ Invoke-RestMethod `
 | `POST` | `/api/recon/openvas/scans` | Si | Crea tarea OpenVAS via GMP si GVM esta listo. |
 | `GET` | `/api/recon/openvas/scans/{id}` | Si | Estado, progreso y hallazgos OpenVAS. |
 | `GET` | `/api/recon/openvas/scans/{id}/report.pdf` | Si | Informe PDF descargable con logo Caligo. |
+| `GET` | `/api/bruteforce/hydra/capabilities` | Si | Estado Hydra, servicios soportados, modos de credenciales y wordlists permitidas. |
+| `POST` | `/api/bruteforce/hydra/runs` | Si | Crea job Hydra con alcance validado y credenciales redaccionadas en preview/logs. |
+| `GET` | `/api/bruteforce/hydra/runs` | Si | Ultimos jobs Hydra del usuario. |
+| `GET` | `/api/bruteforce/hydra/runs/{id}` | Si | Estado, progreso, logs y credenciales validas encontradas por Hydra. |
 | `GET` | `/api/metasploit/capabilities` | Si | Estado RPC, payloads por defecto y politica de alcance. |
 | `POST` | `/api/metasploit/recommendations` | Si | Genera recomendaciones de modulos desde hosts/puertos detectados. |
 | `GET` | `/api/metasploit/module-catalog` | Si | Busca modulos por texto y tipo. |
@@ -398,6 +409,71 @@ En el servidor 2, los logs de sincronizacion de feeds se dejan en:
 /var/log/caligo/gvm-feed-sync.log
 ```
 
+### Hydra
+
+`POST /api/bruteforce/hydra/runs` acepta:
+
+```json
+{
+  "target": "192.168.0.10",
+  "service": "ssh",
+  "port": 22,
+  "usernameMode": "single",
+  "username": "hacker",
+  "passwordMode": "list",
+  "passwords": "password\npassword123\npepito53",
+  "tasks": 4,
+  "connectTimeoutSeconds": 10,
+  "responseWaitSeconds": 5,
+  "stopOnFound": true
+}
+```
+
+Modos de usuario: `single`, `list`, `file`. Modos de password: `single`,
+`list`, `file`, `combo`. El modo `combo` usa lineas `login:password` y se
+traduce a `hydra -C`.
+
+Servicios iniciales soportados: `ssh`, `ftp`, `telnet`, `smtp`, `pop3`, `imap`,
+`smb`, `rdp`, `vnc`, `mysql`, `postgres`, `mssql`, `redis`, `mongodb`, `ldap2`,
+`ldap3`, `http-get`, `https-get`, `http-head`, `https-head`,
+`http-post-form`, `https-post-form`, `http-get-form` y `https-get-form`.
+
+Para formularios HTTP se usan `httpPath`, `httpParameters`,
+`httpFailCondition` y `httpSuccessCondition`. `httpParameters` debe incluir
+`^USER^` y `^PASS^`, por ejemplo:
+
+```json
+{
+  "service": "http-post-form",
+  "httpPath": "/login",
+  "httpParameters": "username=^USER^&password=^PASS^",
+  "httpFailCondition": "F=incorrect"
+}
+```
+
+El backend ejecuta Hydra con `ProcessBuilder`, no con shell. Por defecto bloquea
+objetivos publicos y solo permite hosts privados/locales como `192.168.0.10`,
+`10.0.0.5`, `127.0.0.1` o `host.local`. Las listas pegadas se escriben en
+ficheros temporales para evitar passwords en argumentos de proceso, y esos
+ficheros se eliminan al terminar. `command_preview`, parametros guardados y
+logs en vivo redaccionan passwords; el resultado final conserva solo las
+credenciales validas encontradas para que la herramienta sea util en el
+laboratorio.
+
+Wordlists permitidas por defecto:
+
+```text
+/opt/caligo/wordlists
+/usr/share/wordlists
+```
+
+En el servidor se deja un set minimo de laboratorio en:
+
+```text
+/opt/caligo/wordlists/users-basic.txt
+/opt/caligo/wordlists/passwords-basic.txt
+```
+
 ### Metasploit
 
 Caligo usa la API MessagePack de Metasploit mediante el plugin `msgrpc`. El
@@ -502,6 +578,11 @@ Herramientas instaladas para reconocimiento activo: `nmap`, `gvm`, `gvmd`, `open
 Herramientas instaladas para validacion controlada: `metasploit-framework` con
 `msgrpc` gestionado por systemd y expuesto solo en localhost.
 
+Herramientas instaladas para fuerza bruta controlada: `hydra`. Las wordlists de
+laboratorio de Caligo viven en `/opt/caligo/wordlists` y las wordlists del
+sistema se leen solo si estan bajo las raices permitidas por
+`CALIGO_HYDRA_WORDLIST_ROOTS`.
+
 ## Despliegue servidor
 
 Servidor asignado: `192.168.0.253`.
@@ -527,6 +608,8 @@ CALIGO_MSF_RPC_PORT=55552
 CALIGO_MSF_RPC_SSL=false
 CALIGO_MSF_RPC_USER=caligo
 CALIGO_MSF_RPC_PASSWORD=<password-random-local>
+CALIGO_HYDRA_BINARY=hydra
+CALIGO_HYDRA_WORDLIST_ROOTS=/opt/caligo/wordlists,/usr/share/wordlists
 ```
 
 No guardar este archivo en Git.
