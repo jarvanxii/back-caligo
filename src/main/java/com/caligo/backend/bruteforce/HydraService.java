@@ -657,7 +657,9 @@ public class HydraService {
             }));
             process.waitFor(5, TimeUnit.SECONDS);
             String output = stdout.get(2, TimeUnit.SECONDS);
-            return output.lines().findFirst().orElse("");
+            String firstLine = output.lines().findFirst().orElse("");
+            Matcher matcher = Pattern.compile("Hydra\\s+v[0-9.]+", Pattern.CASE_INSENSITIVE).matcher(firstLine);
+            return matcher.find() ? matcher.group() : firstLine;
         } catch (Exception ex) {
             return "";
         }
