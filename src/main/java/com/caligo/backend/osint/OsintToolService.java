@@ -200,6 +200,7 @@ public class OsintToolService {
                 target,
                 "--print-found",
                 "--no-color",
+                "--no-txt",
                 "--timeout",
                 String.valueOf(timeout)
         ));
