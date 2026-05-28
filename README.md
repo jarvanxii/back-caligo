@@ -717,7 +717,8 @@ Herramientas instaladas para validacion controlada: `metasploit-framework` con
 `msgrpc` gestionado por systemd y expuesto solo en localhost. El modulo de
 vulnerabilidades tambien usa `nuclei`, `searchsploit`, `nikto` y `sqlmap`.
 Nuclei se instala en `/usr/local/bin` y sus templates se actualizan con
-`nuclei -update-templates`; Searchsploit se alimenta del paquete `exploitdb`.
+`nuclei -update-templates`; Searchsploit se alimenta del clone local
+`/opt/exploitdb`.
 
 Herramientas instaladas para fuerza bruta controlada: `hydra`. Las wordlists de
 laboratorio de Caligo viven en `/opt/caligo/wordlists` y las wordlists del
@@ -743,7 +744,8 @@ o `SYSTEM_TOOL_UPDATE_FAILED`.
 Los updates usan comandos estaticos:
 
 - Paquetes APT: `sudo -n apt-get update` y `sudo -n apt-get install --only-upgrade -y <paquete>`.
-- Herramientas Go: `go install <modulo>@latest`.
+- Herramientas Go: `go install <modulo>@latest` en un `GOBIN` temporal y `sudo -n install` a `/usr/local/bin`.
+- Repositorios Git gestionados: `sudo -n git -C <repo> pull --ff-only`.
 - Gems: `sudo -n gem update <gem>`.
 
 Para que APT/Gem funcionen desde el servicio sin hardcodear passwords, el

@@ -39,7 +39,7 @@ public class ServerToolUpdateService {
             aptTool("metasploit", "msfconsole", "Metasploit", "Vulnerabilidades", "Framework RPC para validacion controlada de exploits.", "msfconsole -v", "metasploit-framework"),
             aptTool("hydra", "hydra", "Hydra", "Fuerza bruta", "Validacion de credenciales en servicios de laboratorio.", "hydra -h", "hydra"),
             goTool("nuclei", "nuclei", "Nuclei", "Vulnerabilidades", "Motor de templates para validacion controlada de CVEs y misconfiguraciones.", "nuclei -version", "github.com/projectdiscovery/nuclei/v3/cmd/nuclei"),
-            aptTool("searchsploit", "searchsploit", "Searchsploit", "Vulnerabilidades", "Busqueda local en Exploit-DB para correlacionar versiones y CVEs.", "searchsploit -h", "exploitdb"),
+            gitTool("searchsploit", "searchsploit", "Searchsploit", "Vulnerabilidades", "Busqueda local en Exploit-DB para correlacionar versiones y CVEs.", "searchsploit -h", "/opt/exploitdb"),
             aptTool("nikto", "nikto", "Nikto", "Vulnerabilidades", "Auditoria web de configuraciones, rutas y exposiciones conocidas.", "nikto -Version", "nikto"),
             aptTool("sqlmap", "sqlmap", "sqlmap", "Vulnerabilidades", "Validacion guiada de inyeccion SQL en laboratorios autorizados.", "sqlmap --version", "sqlmap"),
             aptTool("john", "john", "John the Ripper", "Contrasenas", "Auditoria local de hashes y password cracking.", "john", "john"),
@@ -361,7 +361,28 @@ public class ServerToolUpdateService {
                 description,
                 versionCommand,
                 "go",
-                List.of(List.of("sh", "-lc", "go install " + module + "@latest"))
+                List.of(List.of("sh", "-lc", "tmp=$(mktemp -d) && GOBIN=\"$tmp\" go install " + module + "@latest && sudo -n install -m 0755 \"$tmp/" + binary + "\" /usr/local/bin/" + binary + " && rm -rf \"$tmp\""))
+        );
+    }
+
+    private static ToolDefinition gitTool(
+            String id,
+            String binary,
+            String label,
+            String group,
+            String description,
+            String versionCommand,
+            String repositoryPath
+    ) {
+        return new ToolDefinition(
+                id,
+                binary,
+                label,
+                group,
+                description,
+                versionCommand,
+                "git",
+                List.of(List.of("sudo", "-n", "git", "-C", repositoryPath, "pull", "--ff-only"))
         );
     }
 
