@@ -60,6 +60,18 @@ caligo:
     wordlist-roots: ${CALIGO_HYDRA_WORDLIST_ROOTS:/opt/caligo/wordlists,/usr/share/wordlists}
     hydra:
       binary: ${CALIGO_HYDRA_BINARY:hydra}
+  vulnerabilities:
+    allow-external-targets: ${CALIGO_VULNERABILITIES_ALLOW_EXTERNAL_TARGETS:false}
+    max-output-bytes: ${CALIGO_VULNERABILITIES_MAX_OUTPUT_BYTES:1048576}
+    timeout-seconds: ${CALIGO_VULNERABILITIES_TIMEOUT_SECONDS:1800}
+    nuclei:
+      binary: ${CALIGO_NUCLEI_BINARY:nuclei}
+    searchsploit:
+      binary: ${CALIGO_SEARCHSPLOIT_BINARY:searchsploit}
+    nikto:
+      binary: ${CALIGO_NIKTO_BINARY:nikto}
+    sqlmap:
+      binary: ${CALIGO_SQLMAP_BINARY:sqlmap}
   passwords:
     allow-external-targets: ${CALIGO_PASSWORDS_ALLOW_EXTERNAL_TARGETS:false}
     max-output-bytes: ${CALIGO_PASSWORDS_MAX_OUTPUT_BYTES:1048576}

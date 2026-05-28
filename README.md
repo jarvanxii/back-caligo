@@ -132,6 +132,13 @@ http://localhost:8080
 | `CALIGO_HYDRA_BINARY` | `hydra` | Binario Hydra. |
 | `CALIGO_HYDRA_TIMEOUT_SECONDS` | `1800` | Timeout maximo de job Hydra. |
 | `CALIGO_HYDRA_WORDLIST_ROOTS` | `/opt/caligo/wordlists,/usr/share/wordlists` | Raices permitidas para wordlists del servidor. |
+| `CALIGO_VULNERABILITIES_ALLOW_EXTERNAL_TARGETS` | `false` | Si `false`, Nuclei/Nikto/sqlmap solo aceptan URLs privadas/locales. |
+| `CALIGO_VULNERABILITIES_MAX_OUTPUT_BYTES` | `1048576` | Limite de salida capturada por herramientas de vulnerabilidades. |
+| `CALIGO_VULNERABILITIES_TIMEOUT_SECONDS` | `1800` | Timeout maximo por job Nuclei, Nikto o sqlmap. |
+| `CALIGO_NUCLEI_BINARY` | `nuclei` | Binario Nuclei. |
+| `CALIGO_SEARCHSPLOIT_BINARY` | `searchsploit` | Binario Searchsploit. |
+| `CALIGO_NIKTO_BINARY` | `nikto` | Binario Nikto. |
+| `CALIGO_SQLMAP_BINARY` | `sqlmap` | Binario sqlmap. |
 | `CALIGO_PASSWORDS_ALLOW_EXTERNAL_TARGETS` | `false` | Si `false`, CeWL solo acepta URLs privadas/locales. |
 | `CALIGO_PASSWORDS_MAX_OUTPUT_BYTES` | `1048576` | Limite de salida capturada por John, Hashcat, Crunch y CeWL. |
 | `CALIGO_PASSWORDS_TIMEOUT_SECONDS` | `1800` | Timeout maximo por job de contrasenas. |
@@ -178,7 +185,7 @@ Catalogo de modulos visibles desde el frontend.
 | `enabled` | `boolean` | Control de visibilidad. |
 | `created_at` | `datetime(6)` | Alta. |
 
-Modulos iniciales: `urls`, `nmap`, `openvas`, `metasploit`, `bruteforce`, `passwords`, `encoding`, `steganography`.
+Modulos iniciales: `urls`, `nmap`, `openvas`, `metasploit`, `bruteforce`, `nuclei`, `searchsploit`, `nikto`, `sqlmap`, `passwords`, `encoding`, `steganography`.
 
 ### `audit_events`
 
@@ -301,6 +308,13 @@ Invoke-RestMethod `
 | `POST` | `/api/bruteforce/hydra/runs` | Si | Crea job Hydra con alcance validado y credenciales redaccionadas en preview/logs. |
 | `GET` | `/api/bruteforce/hydra/runs` | Si | Ultimos jobs Hydra del usuario. |
 | `GET` | `/api/bruteforce/hydra/runs/{id}` | Si | Estado, progreso, logs y credenciales validas encontradas por Hydra. |
+| `GET` | `/api/vulnerabilities/capabilities` | Si | Estado de Nuclei, Searchsploit, Nikto y sqlmap, politica de alcance y opciones permitidas. |
+| `POST` | `/api/vulnerabilities/nuclei/runs` | Si | Crea job Nuclei con templates y severidades controladas. |
+| `POST` | `/api/vulnerabilities/nikto/runs` | Si | Crea job Nikto sobre una URL privada/local autorizada. |
+| `POST` | `/api/vulnerabilities/sqlmap/runs` | Si | Crea job sqlmap con parametros acotados y secretos redactados. |
+| `GET` | `/api/vulnerabilities/{tool}/runs` | Si | Ultimos jobs de `nuclei`, `nikto` o `sqlmap`. |
+| `GET` | `/api/vulnerabilities/{tool}/runs/{id}` | Si | Estado, progreso, logs y hallazgos normalizados. |
+| `GET/POST` | `/api/vulnerabilities/searchsploit/search` | Si | Consulta local Exploit-DB por texto o CVE sin tocar el objetivo. |
 | `GET` | `/api/passwords/capabilities` | Si | Estado de John, Hashcat, hashID, Crunch, CeWL, modos y wordlists. |
 | `GET` | `/api/passwords/wordlists` | Si | Inventario de wordlists bajo raices permitidas. |
 | `POST` | `/api/passwords/identify` | Si | Identificacion de formato probable de hash con hashID y heuristicas. |
@@ -689,19 +703,21 @@ El inventario de URLs detecta estas herramientas cuando existen en `PATH`:
 - `dig`
 - `nslookup`
 - `httpx`
-- `nuclei`
 - `katana`
 - `gau`
 - `subfinder`
 - `amass`
 - `ffuf`
 
-Herramientas instaladas en el servidor 2 durante el primer despliegue: `nmap`, `ffuf`, `john`, `hashcat`, `hashid`, `crunch`, `cewl`, `exiftool`, `steghide`, `binwalk`, `zsteg`, `httpx`, `nuclei`, `katana`, `gau`, `subfinder` y `amass`.
+Herramientas instaladas en el servidor 2 durante el primer despliegue: `nmap`, `ffuf`, `john`, `hashcat`, `hashid`, `crunch`, `cewl`, `exiftool`, `steghide`, `binwalk`, `zsteg`, `httpx`, `katana`, `gau`, `subfinder` y `amass`.
 
 Herramientas instaladas para reconocimiento activo: `nmap`, `gvm`, `gvmd`, `openvas-scanner`, `ospd-openvas` y `gvm-tools`. Las herramientas activas deben ejecutarse siempre con alcance autorizado, trazabilidad, limites y registro de usuario.
 
 Herramientas instaladas para validacion controlada: `metasploit-framework` con
-`msgrpc` gestionado por systemd y expuesto solo en localhost.
+`msgrpc` gestionado por systemd y expuesto solo en localhost. El modulo de
+vulnerabilidades tambien usa `nuclei`, `searchsploit`, `nikto` y `sqlmap`.
+Nuclei se instala en `/usr/local/bin` y sus templates se actualizan con
+`nuclei -update-templates`; Searchsploit se alimenta del paquete `exploitdb`.
 
 Herramientas instaladas para fuerza bruta controlada: `hydra`. Las wordlists de
 laboratorio de Caligo viven en `/opt/caligo/wordlists` y las wordlists del
@@ -762,6 +778,11 @@ CALIGO_MSF_RPC_USER=caligo
 CALIGO_MSF_RPC_PASSWORD=<password-random-local>
 CALIGO_HYDRA_BINARY=hydra
 CALIGO_HYDRA_WORDLIST_ROOTS=/opt/caligo/wordlists,/usr/share/wordlists
+CALIGO_VULNERABILITIES_ALLOW_EXTERNAL_TARGETS=false
+CALIGO_NUCLEI_BINARY=nuclei
+CALIGO_SEARCHSPLOIT_BINARY=searchsploit
+CALIGO_NIKTO_BINARY=nikto
+CALIGO_SQLMAP_BINARY=sqlmap
 CALIGO_JOHN_BINARY=john
 CALIGO_HASHCAT_BINARY=hashcat
 CALIGO_HASHID_BINARY=hashid
