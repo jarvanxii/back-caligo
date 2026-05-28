@@ -96,3 +96,10 @@ caligo:
       username: ${CALIGO_MSF_RPC_USER:caligo}
       password: ${CALIGO_MSF_RPC_PASSWORD:}
       timeout-seconds: ${CALIGO_MSF_RPC_TIMEOUT_SECONDS:20}
+  network:
+    vpn:
+      wireguard-dir: ${CALIGO_VPN_WIREGUARD_DIR:/etc/caligo/vpn/wireguard}
+      openvpn-dir: ${CALIGO_VPN_OPENVPN_DIR:/etc/caligo/vpn/openvpn}
+      metadata-dir: ${CALIGO_VPN_METADATA_DIR:/etc/caligo/vpn/metadata}
+      helper: ${CALIGO_VPN_HELPER:/usr/local/sbin/caligo-vpn-control}
+      command-timeout-seconds: ${CALIGO_VPN_COMMAND_TIMEOUT_SECONDS:45}

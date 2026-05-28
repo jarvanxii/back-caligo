@@ -284,6 +284,11 @@ Invoke-RestMethod `
 | `GET` | `/api/modules` | Si | Modulos habilitados. |
 | `GET` | `/api/system/tools` | Si | Inventario de herramientas del servidor, version, path y gestor. |
 | `POST` | `/api/system/tools/{id}/update` | Si, ADMIN | Actualiza una herramienta allowlisted desde el servidor. |
+| `GET` | `/api/network/identity` | Si | Snapshot de IP cliente observada, IP publica del servidor, interfaces locales y estado VPN. |
+| `GET` | `/api/network/vpn/status` | Si | Estado del helper VPN, tuneles activos y salida tecnica. |
+| `GET` | `/api/network/vpn/profiles` | Si | Perfiles WireGuard/OpenVPN detectados y metadatos de proveedor/pais/ciudad. |
+| `POST` | `/api/network/vpn/connect` | Si, ADMIN | Conecta un perfil VPN allowlisted mediante helper sudo limitado. |
+| `POST` | `/api/network/vpn/disconnect` | Si, ADMIN | Desconecta un perfil VPN concreto o todos los tuneles Caligo. |
 | `GET` | `/api/urls/local-tools` | Si | Inventario de herramientas locales instaladas. |
 | `POST` | `/api/urls/dns-resolver` | Si | DNS: `A`, `AAAA`, `CNAME`, `MX`, `NS`, `TXT`, `CAA`. |
 | `POST` | `/api/urls/inspector` | Si | Normalizacion e indicadores URL. |
@@ -730,6 +735,64 @@ Herramientas instaladas para contrasenas: `john`, `john-data`, `hashcat`,
 `/opt/caligo/wordlists` y el subset de SecLists descargado queda separado en
 `/opt/caligo/wordlists/seclists`.
 
+### Redes, identidad y VPN
+
+El backend expone `GET /api/network/identity` para que el frontend pueda mostrar
+en todo momento la identidad de red:
+
+- IP observada del cliente desde `X-Forwarded-For`, `X-Real-IP` o `remoteAddr`.
+- IP publica de salida del servidor, cacheada durante unos segundos y consultada
+  en proveedores externos (`api.ipify.org`, `icanhazip.com`, `ifconfig.me`).
+- Hostname e interfaces locales no loopback del servidor.
+- Estado VPN calculado por el helper de control.
+
+Los perfiles VPN se cargan desde rutas allowlisted, sin aceptar rutas recibidas
+desde el navegador:
+
+```text
+/etc/caligo/vpn/wireguard/*.conf
+/etc/caligo/vpn/openvpn/*.ovpn
+/etc/caligo/vpn/metadata/*.json
+```
+
+Metadatos opcionales por perfil, con el mismo nombre base:
+
+```json
+{
+  "provider": "Mullvad",
+  "country": "ES",
+  "city": "Madrid",
+  "label": "Mullvad ES Madrid",
+  "description": "Salida WireGuard de laboratorio"
+}
+```
+
+Proveedores recomendados para cargar perfiles privados: Mullvad, Proton VPN e
+IVPN. Caligo no guarda credenciales de estos proveedores: se deben generar los
+perfiles en la cuenta del proveedor y copiarlos al servidor. Para WireGuard se
+recomienda preferir `.conf`; para OpenVPN, `.ovpn` con auth file root-only si el
+proveedor lo requiere.
+
+El control se ejecuta con helper root-owned:
+
+```bash
+sudo install -o root -g root -m 0755 ops/caligo-vpn-control.sh /usr/local/sbin/caligo-vpn-control
+sudo install -d -o root -g root -m 0700 /etc/caligo/vpn/wireguard /etc/caligo/vpn/openvpn /etc/caligo/vpn/metadata
+```
+
+Permiso sudo minimo:
+
+```sudoers
+fran ALL=(root) NOPASSWD: /usr/local/sbin/caligo-vpn-control *
+```
+
+Herramientas base para el servidor:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y wireguard-tools openvpn resolvconf
+```
+
 ### Actualizaciones desde Caligo
 
 El endpoint `GET /api/system/tools` devuelve el inventario del servidor con
@@ -809,6 +872,11 @@ CALIGO_PASSWORDS_WORDLIST_ROOTS=/opt/caligo/wordlists,/usr/share/wordlists
 CALIGO_PASSWORDS_GENERATED_WORDLIST_ROOT=/opt/caligo/wordlists/generated
 CALIGO_PASSWORDS_ALLOW_EXTERNAL_TARGETS=false
 CALIGO_SYSTEM_TOOL_UPDATE_TIMEOUT_SECONDS=900
+CALIGO_VPN_WIREGUARD_DIR=/etc/caligo/vpn/wireguard
+CALIGO_VPN_OPENVPN_DIR=/etc/caligo/vpn/openvpn
+CALIGO_VPN_METADATA_DIR=/etc/caligo/vpn/metadata
+CALIGO_VPN_HELPER=/usr/local/sbin/caligo-vpn-control
+CALIGO_VPN_COMMAND_TIMEOUT_SECONDS=45
 ```
 
 No guardar este archivo en Git.

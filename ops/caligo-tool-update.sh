@@ -101,6 +101,15 @@ case "$tool" in
   amass)
     go_update 'github.com/owasp-amass/amass/v4/...' amass
     ;;
+  wireguard)
+    apt_update wireguard-tools
+    ;;
+  openvpn)
+    apt_update openvpn
+    ;;
+  resolvconf)
+    apt_update resolvconf
+    ;;
   exiftool)
     apt_update libimage-exiftool-perl
     ;;
