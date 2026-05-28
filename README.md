@@ -2,7 +2,7 @@
 
 Backend Spring Boot de Caligo. Expone una API REST con JWT, Flyway y MariaDB para ejecutar herramientas de laboratorio de ciberseguridad en entornos controlados.
 
-Los modulos funcionales actuales son **URLs**, **Reconocimiento activo**, **Metasploit** y **Fuerza bruta controlada**. URLs cubre DNS, inspeccion URL, HTTP, TLS, reputacion, historial, archivos publicos, endpoints pasivos e inventario de herramientas locales. Reconocimiento activo cubre jobs de **Nmap** y adaptador **OpenVAS/GVM** con JWT, auditoria, validacion de alcance y progreso. Metasploit expone RPC local para discovery asistido, recomendaciones de modulos, ejecucion controlada y gestion de sesiones de laboratorio. Fuerza bruta integra **Hydra** con alcance privado/local, fuentes de credenciales del servidor y trazas redaccionadas.
+Los modulos funcionales actuales son **URLs**, **Reconocimiento activo**, **Metasploit**, **Fuerza bruta controlada** y **Contrasenas**. URLs cubre DNS, inspeccion URL, HTTP, TLS, reputacion, historial, archivos publicos, endpoints pasivos e inventario de herramientas locales. Reconocimiento activo cubre jobs de **Nmap** y adaptador **OpenVAS/GVM** con JWT, auditoria, validacion de alcance y progreso. Metasploit expone RPC local para discovery asistido, recomendaciones de modulos, ejecucion controlada y gestion de sesiones de laboratorio. Fuerza bruta integra **Hydra** con alcance privado/local, fuentes de credenciales del servidor y trazas redaccionadas. Contrasenas integra **John the Ripper**, **Hashcat**, **hashID**, **Crunch**, **CeWL** y wordlists permitidas del servidor.
 El panel de sistema expone inventario versionado de herramientas instaladas y actualizaciones controladas por allowlist.
 
 ## Stack
@@ -23,6 +23,9 @@ El panel de sistema expone inventario versionado de herramientas instaladas y ac
 - Greenbone/OpenVAS via `gvm-cli` cuando GVM esta inicializado.
 - Metasploit Framework via MessagePack RPC (`msgrpc`) escuchando solo en localhost.
 - Hydra CLI para simulaciones de fuerza bruta en laboratorio.
+- John the Ripper y Hashcat para auditoria offline de hashes.
+- hashID para identificacion de formatos probables.
+- Crunch y CeWL para generacion controlada de wordlists.
 
 ## Estructura
 
@@ -39,6 +42,7 @@ back-caligo/
     health/        Endpoints de salud
     module/        Catalogo de modulos visibles
     metasploit/   Cliente RPC, recomendaciones, ejecucion de modulos y sesiones
+    passwords/    John, Hashcat, hashID, Crunch, CeWL y wordlists
     recon/         Jobs Nmap/OpenVAS, capacidades, progreso y parseo de resultados
     security/      JWT y UserDetailsService
     system/        Inventario y actualizacion controlada de herramientas del servidor
@@ -128,6 +132,16 @@ http://localhost:8080
 | `CALIGO_HYDRA_BINARY` | `hydra` | Binario Hydra. |
 | `CALIGO_HYDRA_TIMEOUT_SECONDS` | `1800` | Timeout maximo de job Hydra. |
 | `CALIGO_HYDRA_WORDLIST_ROOTS` | `/opt/caligo/wordlists,/usr/share/wordlists` | Raices permitidas para wordlists del servidor. |
+| `CALIGO_PASSWORDS_ALLOW_EXTERNAL_TARGETS` | `false` | Si `false`, CeWL solo acepta URLs privadas/locales. |
+| `CALIGO_PASSWORDS_MAX_OUTPUT_BYTES` | `1048576` | Limite de salida capturada por John, Hashcat, Crunch y CeWL. |
+| `CALIGO_PASSWORDS_TIMEOUT_SECONDS` | `1800` | Timeout maximo por job de contrasenas. |
+| `CALIGO_PASSWORDS_WORDLIST_ROOTS` | `/opt/caligo/wordlists,/usr/share/wordlists` | Raices permitidas para wordlists de John/Hashcat. |
+| `CALIGO_PASSWORDS_GENERATED_WORDLIST_ROOT` | `/opt/caligo/wordlists/generated` | Directorio de salida para Crunch y CeWL. |
+| `CALIGO_JOHN_BINARY` | `john` | Binario John the Ripper. |
+| `CALIGO_HASHCAT_BINARY` | `hashcat` | Binario Hashcat. |
+| `CALIGO_HASHID_BINARY` | `hashid` | Binario hashID. |
+| `CALIGO_CRUNCH_BINARY` | `crunch` | Binario Crunch. |
+| `CALIGO_CEWL_BINARY` | `cewl` | Binario CeWL. |
 | `CALIGO_MSF_RPC_HOST` | `127.0.0.1` | Host local del RPC MessagePack de Metasploit. |
 | `CALIGO_MSF_RPC_PORT` | `55552` | Puerto local del plugin `msgrpc`. |
 | `CALIGO_MSF_RPC_SSL` | `false` | Debe coincidir con el modo SSL del plugin `msgrpc`. |
@@ -206,7 +220,7 @@ Historial y trazabilidad de herramientas activas.
 | --- | --- | --- |
 | `id` | `char(36)` | UUID primario del job. |
 | `username` | `varchar(80)` | Usuario que lanza la herramienta. |
-| `tool` | `varchar(40)` | `nmap`, `openvas`, `metasploit` o `hydra`. |
+| `tool` | `varchar(40)` | `nmap`, `openvas`, `metasploit`, `hydra`, `john`, `hashcat`, `crunch` o `cewl`. |
 | `target` | `varchar(240)` | Objetivo validado. |
 | `status` | `varchar(30)` | `QUEUED`, `RUNNING`, `COMPLETED`, `FAILED`, `CANCELLED`. |
 | `progress` | `integer` | Progreso 0-100. |
@@ -287,6 +301,13 @@ Invoke-RestMethod `
 | `POST` | `/api/bruteforce/hydra/runs` | Si | Crea job Hydra con alcance validado y credenciales redaccionadas en preview/logs. |
 | `GET` | `/api/bruteforce/hydra/runs` | Si | Ultimos jobs Hydra del usuario. |
 | `GET` | `/api/bruteforce/hydra/runs/{id}` | Si | Estado, progreso, logs y credenciales validas encontradas por Hydra. |
+| `GET` | `/api/passwords/capabilities` | Si | Estado de John, Hashcat, hashID, Crunch, CeWL, modos y wordlists. |
+| `GET` | `/api/passwords/wordlists` | Si | Inventario de wordlists bajo raices permitidas. |
+| `POST` | `/api/passwords/identify` | Si | Identificacion de formato probable de hash con hashID y heuristicas. |
+| `POST` | `/api/passwords/{tool}/runs` | Si | Crea job de John o Hashcat. |
+| `GET` | `/api/passwords/{tool}/runs` | Si | Ultimos jobs de la herramienta para el usuario. |
+| `GET` | `/api/passwords/{tool}/runs/{id}` | Si | Estado, progreso, logs y resultado de John, Hashcat, Crunch o CeWL. |
+| `POST` | `/api/passwords/{tool}/generate` | Si | Genera wordlists con Crunch o CeWL. |
 | `GET` | `/api/metasploit/capabilities` | Si | Estado RPC, payloads por defecto y politica de alcance. |
 | `POST` | `/api/metasploit/recommendations` | Si | Genera recomendaciones de modulos desde hosts/puertos detectados. |
 | `GET` | `/api/metasploit/module-catalog` | Si | Busca modulos por texto y tipo. |
@@ -475,9 +496,108 @@ Wordlists permitidas por defecto:
 En el servidor se deja un set minimo de laboratorio en:
 
 ```text
-/opt/caligo/wordlists/users-basic.txt
-/opt/caligo/wordlists/passwords-basic.txt
+/opt/caligo/wordlists/users/users-basic.txt
+/opt/caligo/wordlists/passwords/passwords-basic.txt
+/opt/caligo/wordlists/combos/combos-basic.txt
 ```
+
+### Contrasenas
+
+El modulo de contrasenas es offline y orientado a auditoria autorizada. No
+intenta autenticarse contra servicios remotos; para eso existe Hydra dentro de
+Fuerza Bruta. Los jobs quedan guardados en `tool_execution_jobs` para que el
+frontend pueda reenganchar el progreso aunque el usuario cambie de vista.
+
+`GET /api/passwords/capabilities` devuelve:
+
+- Estado y version de `john`, `hashcat`, `hashid`, `crunch` y `cewl`.
+- Formatos John permitidos.
+- Modos Hashcat permitidos.
+- Wordlists visibles bajo las raices permitidas.
+- Defaults de laboratorio para pruebas locales.
+
+`POST /api/passwords/identify` acepta:
+
+```json
+{
+  "hash": "5f4dcc3b5aa765d61d8327deb882cf99"
+}
+```
+
+`POST /api/passwords/john/runs` acepta:
+
+```json
+{
+  "hashes": "5f4dcc3b5aa765d61d8327deb882cf99",
+  "hashFormat": "raw-md5",
+  "wordlistText": "password\npassword123\npepito53"
+}
+```
+
+`POST /api/passwords/hashcat/runs` acepta diccionario o mascara:
+
+```json
+{
+  "hashes": "5f4dcc3b5aa765d61d8327deb882cf99",
+  "hashcatMode": "0",
+  "attackMode": "wordlist",
+  "wordlistFile": "/opt/caligo/wordlists/passwords/passwords-basic.txt"
+}
+```
+
+```json
+{
+  "hashes": "5f4dcc3b5aa765d61d8327deb882cf99",
+  "hashcatMode": "0",
+  "attackMode": "mask",
+  "mask": "?l?l?l?l?d?d"
+}
+```
+
+`POST /api/passwords/crunch/generate` crea ficheros bajo
+`CALIGO_PASSWORDS_GENERATED_WORDLIST_ROOT` y limita el espacio estimado a
+500000 lineas:
+
+```json
+{
+  "minLength": 4,
+  "maxLength": 5,
+  "charset": "abcdefghijklmnopqrstuvwxyz0123456789",
+  "outputName": "crunch-lab.txt"
+}
+```
+
+`POST /api/passwords/cewl/generate` genera wordlists desde URLs autorizadas. Por
+defecto bloquea objetivos publicos si `CALIGO_PASSWORDS_ALLOW_EXTERNAL_TARGETS`
+esta a `false`:
+
+```json
+{
+  "url": "http://192.168.0.10",
+  "depth": 2,
+  "minWordLength": 4,
+  "withNumbers": true,
+  "outputName": "cewl-lab.txt"
+}
+```
+
+Wordlists instaladas y permitidas en el servidor 2:
+
+```text
+/opt/caligo/wordlists/passwords/passwords-basic.txt
+/opt/caligo/wordlists/users/users-basic.txt
+/opt/caligo/wordlists/combos/combos-basic.txt
+/opt/caligo/wordlists/patterns/masks-basic.txt
+/opt/caligo/wordlists/seclists/Usernames
+/opt/caligo/wordlists/seclists/Passwords/Common-Credentials
+/opt/caligo/wordlists/seclists/Discovery/Web-Content
+/opt/caligo/wordlists/generated
+```
+
+Los hashes y diccionarios pegados se escriben en directorios temporales y se
+eliminan al terminar. Las rutas de wordlist enviadas por el cliente solo se
+aceptan si pertenecen a `CALIGO_PASSWORDS_WORDLIST_ROOTS` o al directorio de
+generados.
 
 ### Metasploit
 
@@ -576,7 +696,7 @@ El inventario de URLs detecta estas herramientas cuando existen en `PATH`:
 - `amass`
 - `ffuf`
 
-Herramientas instaladas en el servidor 2 durante el primer despliegue: `nmap`, `ffuf`, `john`, `hashcat`, `exiftool`, `steghide`, `binwalk`, `zsteg`, `httpx`, `nuclei`, `katana`, `gau`, `subfinder` y `amass`.
+Herramientas instaladas en el servidor 2 durante el primer despliegue: `nmap`, `ffuf`, `john`, `hashcat`, `hashid`, `crunch`, `cewl`, `exiftool`, `steghide`, `binwalk`, `zsteg`, `httpx`, `nuclei`, `katana`, `gau`, `subfinder` y `amass`.
 
 Herramientas instaladas para reconocimiento activo: `nmap`, `gvm`, `gvmd`, `openvas-scanner`, `ospd-openvas` y `gvm-tools`. Las herramientas activas deben ejecutarse siempre con alcance autorizado, trazabilidad, limites y registro de usuario.
 
@@ -587,6 +707,11 @@ Herramientas instaladas para fuerza bruta controlada: `hydra`. Las wordlists de
 laboratorio de Caligo viven en `/opt/caligo/wordlists` y las wordlists del
 sistema se leen solo si estan bajo las raices permitidas por
 `CALIGO_HYDRA_WORDLIST_ROOTS`.
+
+Herramientas instaladas para contrasenas: `john`, `john-data`, `hashcat`,
+`hashid`, `crunch` y `cewl`. El set de wordlists de laboratorio vive bajo
+`/opt/caligo/wordlists` y el subset de SecLists descargado queda separado en
+`/opt/caligo/wordlists/seclists`.
 
 ### Actualizaciones desde Caligo
 
@@ -637,6 +762,14 @@ CALIGO_MSF_RPC_USER=caligo
 CALIGO_MSF_RPC_PASSWORD=<password-random-local>
 CALIGO_HYDRA_BINARY=hydra
 CALIGO_HYDRA_WORDLIST_ROOTS=/opt/caligo/wordlists,/usr/share/wordlists
+CALIGO_JOHN_BINARY=john
+CALIGO_HASHCAT_BINARY=hashcat
+CALIGO_HASHID_BINARY=hashid
+CALIGO_CRUNCH_BINARY=crunch
+CALIGO_CEWL_BINARY=cewl
+CALIGO_PASSWORDS_WORDLIST_ROOTS=/opt/caligo/wordlists,/usr/share/wordlists
+CALIGO_PASSWORDS_GENERATED_WORDLIST_ROOT=/opt/caligo/wordlists/generated
+CALIGO_PASSWORDS_ALLOW_EXTERNAL_TARGETS=false
 CALIGO_SYSTEM_TOOL_UPDATE_TIMEOUT_SECONDS=900
 ```
 
