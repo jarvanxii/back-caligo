@@ -448,7 +448,7 @@ public class PasswordToolService {
             Map<String, Object> result = "john".equals(tool)
                     ? johnResult(command, exitCode, out + "\n" + err)
                     : hashcatResult(command, exitCode, out + "\n" + err);
-            boolean expected = "john".equals(tool) ? exitCode == 0 : exitCode == 0 || exitCode == 1;
+            boolean expected = "john".equals(tool) ? exitCode == 0 || hasCracked(result) : exitCode == 0 || exitCode == 1;
             if (expected) {
                 update(jobId, job -> job.markCompleted(writeJson(result)));
             } else {
@@ -520,6 +520,11 @@ public class PasswordToolService {
         result.put("output", sample(output, 16000));
         result.put("showOutput", sample(showOutput, 16000));
         return result;
+    }
+
+    private boolean hasCracked(Map<String, Object> result) {
+        Object cracked = result.get("cracked");
+        return cracked instanceof List<?> values && !values.isEmpty();
     }
 
     private Map<String, Object> hashcatResult(CrackCommand command, int exitCode, String output) {
