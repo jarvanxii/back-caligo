@@ -814,8 +814,8 @@ sudo apt-get install -y wireguard-tools openvpn resolvconf
 ### Actualizaciones desde Caligo
 
 El endpoint `GET /api/system/tools` devuelve el inventario del servidor con
-version actual, binario detectado, grupo funcional y gestor (`apt`, `go`, `git`
-o `gem`). El frontend lo usa en `Ajustes > Actualizaciones`.
+version actual, binario detectado, grupo funcional y gestor (`apt`, `go`, `git`,
+`gem` o `python`). El frontend lo usa en `Ajustes > Actualizaciones`.
 
 El endpoint `POST /api/system/tools/{id}/update` solo acepta IDs definidos en el
 backend. No recibe comandos desde el navegador y requiere rol `ADMIN`. Cada
@@ -837,6 +837,8 @@ Dentro del script:
 - Herramientas Go: `go install <modulo>@latest` en un `GOBIN` temporal e `install` a `/usr/local/bin`.
 - Repositorios Git gestionados: `git -C <repo> pull --ff-only`.
 - Gems: `gem update <gem>`.
+- Herramientas Python OSINT: `pipx install --force <paquete>` con wrapper estable en `/usr/local/bin`.
+- `theHarvester`: clon oficial en `/opt/theHarvester`, `uv sync` y wrapper `/usr/local/bin/theHarvester`.
 
 Para que funcione desde el servicio sin hardcodear passwords, el servidor debe
 conceder `NOPASSWD` solo al helper:

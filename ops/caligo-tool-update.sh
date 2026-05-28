@@ -51,6 +51,29 @@ python_tool_update() {
   }
 }
 
+theharvester_update() {
+  local repo="/opt/theHarvester"
+  apt-get update
+  apt-get install -y git curl python3 python3-venv
+  if [ -d "${repo}/.git" ]; then
+    git -C "$repo" pull --ff-only
+  else
+    rm -rf "$repo"
+    git clone https://github.com/laramies/theHarvester.git "$repo"
+  fi
+  if ! command -v uv >/dev/null 2>&1; then
+    curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh
+  fi
+  cd "$repo"
+  uv sync
+  cat >/usr/local/bin/theHarvester <<'WRAPPER'
+#!/usr/bin/env bash
+cd /opt/theHarvester
+exec uv run theHarvester "$@"
+WRAPPER
+  chmod 0755 /usr/local/bin/theHarvester
+}
+
 case "$tool" in
   nmap)
     apt_update nmap
@@ -135,7 +158,7 @@ case "$tool" in
     python_tool_update holehe holehe
     ;;
   theharvester)
-    python_tool_update theHarvester theHarvester
+    theharvester_update
     ;;
   wireguard)
     apt_update wireguard-tools
