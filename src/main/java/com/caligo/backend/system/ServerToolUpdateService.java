@@ -34,6 +34,12 @@ public class ServerToolUpdateService {
     private static final Duration PROBE_TIMEOUT = Duration.ofSeconds(8);
     private static final Pattern VERSION_TOKEN = Pattern.compile("\\b(v?\\d+(?:\\.\\d+)+(?:[-+._a-zA-Z0-9]*)?)\\b");
     private static final List<ToolDefinition> TOOLS = List.of(
+            aptTool("nmap", "nmap", "Nmap", "Reconocimiento", "Escaneo parametrizado de puertos, servicios y scripts NSE.", "nmap --version", "nmap"),
+            aptGroupTool("openvas", "gvm-cli", "OpenVAS / GVM", "Reconocimiento", "Motor Greenbone GMP para tareas OpenVAS.", "gvm-cli --version", List.of("gvm", "gvmd", "openvas-scanner", "ospd-openvas", "gvm-tools")),
+            aptTool("metasploit", "msfconsole", "Metasploit", "Vulnerabilidades", "Framework RPC para validacion controlada de exploits.", "msfconsole -v", "metasploit-framework"),
+            aptTool("hydra", "hydra", "Hydra", "Fuerza bruta", "Validacion de credenciales en servicios de laboratorio.", "hydra -h", "hydra"),
+            aptTool("john", "john", "John the Ripper", "Contrasenas", "Auditoria local de hashes y password cracking.", "john --list=build-info", "john"),
+            aptTool("hashcat", "hashcat", "Hashcat", "Contrasenas", "Cracking acelerado de hashes cuando hay GPU/CPU disponible.", "hashcat --version", "hashcat"),
             aptTool("curl", "curl", "Curl", "URLs", "Cliente HTTP para inspeccion, cabeceras y pruebas controladas.", "curl --version", "curl"),
             aptTool("openssl", "openssl", "OpenSSL", "URLs", "Inspeccion TLS, certificados y primitivas criptograficas.", "openssl version", "openssl"),
             aptTool("whois", "whois", "Whois", "URLs", "Consulta RDAP/WHOIS de dominios e IPs.", "whois --version", "whois"),
@@ -46,12 +52,6 @@ public class ServerToolUpdateService {
             goTool("gau", "gau", "gau", "URLs", "Recoleccion historica de URLs publicas.", "gau --version", "github.com/lc/gau/v2/cmd/gau"),
             goTool("subfinder", "subfinder", "Subfinder", "URLs", "Descubrimiento pasivo de subdominios.", "subfinder -version", "github.com/projectdiscovery/subfinder/v2/cmd/subfinder"),
             goTool("amass", "amass", "Amass", "URLs", "Enumeracion OSINT de dominios y superficie externa.", "amass -version", "github.com/owasp-amass/amass/v4/..."),
-            aptTool("nmap", "nmap", "Nmap", "Reconocimiento", "Escaneo parametrizado de puertos, servicios y scripts NSE.", "nmap --version", "nmap"),
-            aptGroupTool("openvas", "gvm-cli", "OpenVAS / GVM", "Reconocimiento", "Motor Greenbone GMP para tareas OpenVAS.", "gvm-cli --version", List.of("gvm", "gvmd", "openvas-scanner", "ospd-openvas", "gvm-tools")),
-            aptTool("metasploit", "msfconsole", "Metasploit", "Vulnerabilidades", "Framework RPC para validacion controlada de exploits.", "msfconsole -v", "metasploit-framework"),
-            aptTool("hydra", "hydra", "Hydra", "Fuerza bruta", "Validacion de credenciales en servicios de laboratorio.", "hydra -h", "hydra"),
-            aptTool("john", "john", "John the Ripper", "Contrasenas", "Auditoria local de hashes y password cracking.", "john --version", "john"),
-            aptTool("hashcat", "hashcat", "Hashcat", "Contrasenas", "Cracking acelerado de hashes cuando hay GPU/CPU disponible.", "hashcat --version", "hashcat"),
             aptTool("exiftool", "exiftool", "ExifTool", "Esteganografia", "Extraccion y analisis de metadatos en ficheros.", "exiftool -ver", "libimage-exiftool-perl"),
             aptTool("steghide", "steghide", "Steghide", "Esteganografia", "Extraccion e insercion controlada de datos ocultos.", "steghide --version", "steghide"),
             aptTool("binwalk", "binwalk", "Binwalk", "Esteganografia", "Analisis de firmas y contenido embebido.", "binwalk --version", "binwalk"),
