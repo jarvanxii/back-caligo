@@ -28,7 +28,7 @@ public class SecurityConfig {
 
     private final List<String> allowedOrigins;
 
-    public SecurityConfig(@Value("${caligo.cors.allowed-origins:http://localhost:5173,http://127.0.0.1:5173}") String allowedOrigins) {
+    public SecurityConfig(@Value("${caligo.cors.allowed-origins:http://localhost:*,http://127.0.0.1:*,http://192.168.0.17:*}") String allowedOrigins) {
         this.allowedOrigins = Arrays.stream(allowedOrigins.split(","))
                 .map(String::trim)
                 .filter(value -> !value.isBlank())
@@ -62,14 +62,25 @@ public class SecurityConfig {
     @Bean
     CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(allowedOrigins);
+        configuration.setAllowedOriginPatterns(allowedOrigins);
         configuration.setAllowedMethods(List.of("GET", "POST", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type"));
+        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Access-Control-Request-Private-Network"));
         configuration.setExposedHeaders(List.of("Authorization"));
         configuration.setAllowCredentials(false);
+        enablePrivateNetworkAccess(configuration);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/api/**", configuration);
         return source;
+    }
+
+    private void enablePrivateNetworkAccess(CorsConfiguration configuration) {
+        try {
+            CorsConfiguration.class
+                    .getMethod("setAllowPrivateNetwork", Boolean.class)
+                    .invoke(configuration, Boolean.TRUE);
+        } catch (ReflectiveOperationException ignored) {
+            // Older Spring versions do not expose the Private Network Access flag.
+        }
     }
 }

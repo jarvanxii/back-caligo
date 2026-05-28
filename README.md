@@ -115,7 +115,7 @@ http://localhost:8080
 | `CALIGO_BOOTSTRAP_ADMIN_EMAIL` | `admin@caligo.local` | Email admin inicial. |
 | `CALIGO_BOOTSTRAP_ADMIN_PASSWORD` | `change-me-now` | Password admin local. |
 | `CALIGO_SERVER_PORT` | `8080` | Puerto HTTP. |
-| `CALIGO_CORS_ALLOWED_ORIGINS` | front local Vite | Origenes permitidos. |
+| `CALIGO_CORS_ALLOWED_ORIGINS` | `http://localhost:*,http://127.0.0.1:*,http://192.168.0.17:*` | Patrones CORS permitidos para el front local/LAN de Vite. |
 | `CALIGO_VIRUSTOTAL_API_KEY` | sin configurar | Activa consulta VirusTotal. |
 | `CALIGO_ABUSEIPDB_API_KEY` | sin configurar | Activa reputacion IP con AbuseIPDB. |
 | `CALIGO_SAFE_BROWSING_API_KEY` | sin configurar | Activa Google Safe Browsing. |
