@@ -58,6 +58,12 @@ public class ServerToolUpdateService {
             goTool("gau", "gau", "gau", "URLs", "Recoleccion historica de URLs publicas.", "gau --version", "github.com/lc/gau/v2/cmd/gau"),
             goTool("subfinder", "subfinder", "Subfinder", "URLs", "Descubrimiento pasivo de subdominios.", "subfinder -version", "github.com/projectdiscovery/subfinder/v2/cmd/subfinder"),
             goTool("amass", "amass", "Amass", "URLs", "Enumeracion OSINT de dominios y superficie externa.", "amass -version", "github.com/owasp-amass/amass/v4/..."),
+            backendTool("profile-search", "java", "Caligo People", "OSINT", "Busqueda publica de perfiles sociales por nombre desde el backend.", "java -version"),
+            pythonTool("sherlock", "sherlock", "Sherlock", "OSINT", "Enumeracion de usernames en redes sociales y plataformas publicas.", "sherlock --version"),
+            pythonTool("maigret", "maigret", "Maigret", "OSINT", "Correlacion OSINT de usernames con scoring y busqueda multi-sitio.", "maigret --version"),
+            pythonTool("social-analyzer", "social-analyzer", "Social Analyzer", "OSINT", "Correlacion de nombres y aliases contra perfiles de redes sociales.", "social-analyzer --version"),
+            pythonTool("holehe", "holehe", "Holehe", "OSINT", "Comprobacion de uso publico de emails en servicios online.", "holehe --version"),
+            pythonTool("theharvester", "theHarvester", "theHarvester", "OSINT", "Recoleccion de emails, hosts y fuentes publicas por dominio.", "theHarvester -h"),
             aptTool("wireguard", "wg", "WireGuard", "Redes", "Tuneles WireGuard para salida controlada del servidor Caligo.", "wg --version", "wireguard-tools"),
             aptTool("openvpn", "openvpn", "OpenVPN", "Redes", "Cliente OpenVPN para perfiles de proveedores o laboratorios privados.", "openvpn --version", "openvpn"),
             aptTool("resolvconf", "resolvconf", "resolvconf", "Redes", "Gestion de DNS para clientes VPN cuando el perfil lo requiere.", "resolvconf --version", "resolvconf"),
@@ -405,6 +411,46 @@ public class ServerToolUpdateService {
                 versionCommand,
                 "gem",
                 helperUpdate(id)
+        );
+    }
+
+    private static ToolDefinition pythonTool(
+            String id,
+            String binary,
+            String label,
+            String group,
+            String description,
+            String versionCommand
+    ) {
+        return new ToolDefinition(
+                id,
+                binary,
+                label,
+                group,
+                description,
+                versionCommand,
+                "pipx",
+                helperUpdate(id)
+        );
+    }
+
+    private static ToolDefinition backendTool(
+            String id,
+            String binary,
+            String label,
+            String group,
+            String description,
+            String versionCommand
+    ) {
+        return new ToolDefinition(
+                id,
+                binary,
+                label,
+                group,
+                description,
+                versionCommand,
+                "backend",
+                List.of()
         );
     }
 

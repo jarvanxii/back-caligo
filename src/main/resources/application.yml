@@ -72,6 +72,19 @@ caligo:
       binary: ${CALIGO_NIKTO_BINARY:nikto}
     sqlmap:
       binary: ${CALIGO_SQLMAP_BINARY:sqlmap}
+  osint:
+    max-output-bytes: ${CALIGO_OSINT_MAX_OUTPUT_BYTES:1048576}
+    timeout-seconds: ${CALIGO_OSINT_TIMEOUT_SECONDS:600}
+    sherlock:
+      binary: ${CALIGO_SHERLOCK_BINARY:sherlock}
+    maigret:
+      binary: ${CALIGO_MAIGRET_BINARY:maigret}
+    social-analyzer:
+      binary: ${CALIGO_SOCIAL_ANALYZER_BINARY:social-analyzer}
+    holehe:
+      binary: ${CALIGO_HOLEHE_BINARY:holehe}
+    theharvester:
+      binary: ${CALIGO_THEHARVESTER_BINARY:theHarvester}
   passwords:
     allow-external-targets: ${CALIGO_PASSWORDS_ALLOW_EXTERNAL_TARGETS:false}
     max-output-bytes: ${CALIGO_PASSWORDS_MAX_OUTPUT_BYTES:1048576}

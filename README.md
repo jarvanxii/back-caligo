@@ -2,7 +2,7 @@
 
 Backend Spring Boot de Caligo. Expone una API REST con JWT, Flyway y MariaDB para ejecutar herramientas de laboratorio de ciberseguridad en entornos controlados.
 
-Los modulos funcionales actuales son **URLs**, **Reconocimiento activo**, **Metasploit**, **Fuerza bruta controlada** y **Contrasenas**. URLs cubre DNS, inspeccion URL, HTTP, TLS, reputacion, historial, archivos publicos, endpoints pasivos e inventario de herramientas locales. Reconocimiento activo cubre jobs de **Nmap** y adaptador **OpenVAS/GVM** con JWT, auditoria, validacion de alcance y progreso. Metasploit expone RPC local para discovery asistido, recomendaciones de modulos, ejecucion controlada y gestion de sesiones de laboratorio. Fuerza bruta integra **Hydra** con alcance privado/local, fuentes de credenciales del servidor y trazas redaccionadas. Contrasenas integra **John the Ripper**, **Hashcat**, **hashID**, **Crunch**, **CeWL** y wordlists permitidas del servidor.
+Los modulos funcionales actuales son **URLs**, **Reconocimiento activo**, **OSINT**, **Metasploit**, **Fuerza bruta controlada** y **Contrasenas**. URLs cubre DNS, inspeccion URL, HTTP, TLS, reputacion, historial, archivos publicos, endpoints pasivos e inventario de herramientas locales. Reconocimiento activo cubre jobs de **Nmap** y adaptador **OpenVAS/GVM** con JWT, auditoria, validacion de alcance y progreso. OSINT integra **Caligo People**, **Sherlock**, **Maigret**, **Social Analyzer**, **Holehe** y **theHarvester** para perfiles publicos, usernames, emails y dominios. Metasploit expone RPC local para discovery asistido, recomendaciones de modulos, ejecucion controlada y gestion de sesiones de laboratorio. Fuerza bruta integra **Hydra** con alcance privado/local, fuentes de credenciales del servidor y trazas redaccionadas. Contrasenas integra **John the Ripper**, **Hashcat**, **hashID**, **Crunch**, **CeWL** y wordlists permitidas del servidor.
 El panel de sistema expone inventario versionado de herramientas instaladas y actualizaciones controladas por allowlist.
 
 ## Stack
@@ -22,6 +22,7 @@ El panel de sistema expone inventario versionado de herramientas instaladas y ac
 - Nmap CLI en el servidor.
 - Greenbone/OpenVAS via `gvm-cli` cuando GVM esta inicializado.
 - Metasploit Framework via MessagePack RPC (`msgrpc`) escuchando solo en localhost.
+- Sherlock, Maigret, Social Analyzer, Holehe y theHarvester instalados en el servidor para OSINT.
 - Hydra CLI para simulaciones de fuerza bruta en laboratorio.
 - John the Ripper y Hashcat para auditoria offline de hashes.
 - hashID para identificacion de formatos probables.
@@ -42,6 +43,7 @@ back-caligo/
     health/        Endpoints de salud
     module/        Catalogo de modulos visibles
     metasploit/   Cliente RPC, recomendaciones, ejecucion de modulos y sesiones
+    osint/         Busqueda publica de perfiles, usernames, emails y dominios
     passwords/    John, Hashcat, hashID, Crunch, CeWL y wordlists
     recon/         Jobs Nmap/OpenVAS, capacidades, progreso y parseo de resultados
     security/      JWT y UserDetailsService
@@ -139,6 +141,13 @@ http://localhost:8080
 | `CALIGO_SEARCHSPLOIT_BINARY` | `searchsploit` | Binario Searchsploit. |
 | `CALIGO_NIKTO_BINARY` | `nikto` | Binario Nikto. |
 | `CALIGO_SQLMAP_BINARY` | `sqlmap` | Binario sqlmap. |
+| `CALIGO_OSINT_MAX_OUTPUT_BYTES` | `1048576` | Limite de salida capturada por herramientas OSINT. |
+| `CALIGO_OSINT_TIMEOUT_SECONDS` | `600` | Timeout maximo por job OSINT. |
+| `CALIGO_SHERLOCK_BINARY` | `sherlock` | Binario Sherlock. |
+| `CALIGO_MAIGRET_BINARY` | `maigret` | Binario Maigret. |
+| `CALIGO_SOCIAL_ANALYZER_BINARY` | `social-analyzer` | Binario Social Analyzer. |
+| `CALIGO_HOLEHE_BINARY` | `holehe` | Binario Holehe. |
+| `CALIGO_THEHARVESTER_BINARY` | `theHarvester` | Binario theHarvester. |
 | `CALIGO_PASSWORDS_ALLOW_EXTERNAL_TARGETS` | `false` | Si `false`, CeWL solo acepta URLs privadas/locales. |
 | `CALIGO_PASSWORDS_MAX_OUTPUT_BYTES` | `1048576` | Limite de salida capturada por John, Hashcat, Crunch y CeWL. |
 | `CALIGO_PASSWORDS_TIMEOUT_SECONDS` | `1800` | Timeout maximo por job de contrasenas. |
@@ -185,7 +194,7 @@ Catalogo de modulos visibles desde el frontend.
 | `enabled` | `boolean` | Control de visibilidad. |
 | `created_at` | `datetime(6)` | Alta. |
 
-Modulos iniciales: `urls`, `nmap`, `openvas`, `metasploit`, `bruteforce`, `nuclei`, `searchsploit`, `nikto`, `sqlmap`, `passwords`, `encoding`, `steganography`.
+Modulos iniciales: `urls`, `nmap`, `openvas`, `metasploit`, `bruteforce`, `nuclei`, `searchsploit`, `nikto`, `sqlmap`, `osint-profile-search`, `sherlock`, `maigret`, `social-analyzer`, `holehe`, `theharvester`, `passwords`, `encoding`, `steganography`.
 
 ### `audit_events`
 
@@ -227,7 +236,7 @@ Historial y trazabilidad de herramientas activas.
 | --- | --- | --- |
 | `id` | `char(36)` | UUID primario del job. |
 | `username` | `varchar(80)` | Usuario que lanza la herramienta. |
-| `tool` | `varchar(40)` | `nmap`, `openvas`, `metasploit`, `hydra`, `john`, `hashcat`, `crunch` o `cewl`. |
+| `tool` | `varchar(40)` | `nmap`, `openvas`, `metasploit`, `hydra`, `nuclei`, `nikto`, `sqlmap`, `sherlock`, `maigret`, `social-analyzer`, `holehe`, `theharvester`, `john`, `hashcat`, `crunch` o `cewl`. |
 | `target` | `varchar(240)` | Objetivo validado. |
 | `status` | `varchar(30)` | `QUEUED`, `RUNNING`, `COMPLETED`, `FAILED`, `CANCELLED`. |
 | `progress` | `integer` | Progreso 0-100. |
@@ -320,6 +329,15 @@ Invoke-RestMethod `
 | `GET` | `/api/vulnerabilities/{tool}/runs` | Si | Ultimos jobs de `nuclei`, `nikto` o `sqlmap`. |
 | `GET` | `/api/vulnerabilities/{tool}/runs/{id}` | Si | Estado, progreso, logs y hallazgos normalizados. |
 | `GET/POST` | `/api/vulnerabilities/searchsploit/search` | Si | Consulta local Exploit-DB por texto o CVE sin tocar el objetivo. |
+| `GET` | `/api/osint/capabilities` | Si | Estado de Caligo People, Sherlock, Maigret, Social Analyzer, Holehe y theHarvester. |
+| `POST` | `/api/osint/profile-search/search` | Si | Busca candidatos publicos por nombre real en LinkedIn y redes indexadas. |
+| `POST` | `/api/osint/sherlock/runs` | Si | Crea job Sherlock por username. |
+| `POST` | `/api/osint/maigret/runs` | Si | Crea job Maigret por username. |
+| `POST` | `/api/osint/social-analyzer/runs` | Si | Crea job Social Analyzer por nombre, alias o username. |
+| `POST` | `/api/osint/holehe/runs` | Si | Crea job Holehe por email. |
+| `POST` | `/api/osint/theharvester/runs` | Si | Crea job theHarvester por dominio. |
+| `GET` | `/api/osint/{tool}/runs` | Si | Ultimos jobs OSINT del usuario. |
+| `GET` | `/api/osint/{tool}/runs/{id}` | Si | Estado, progreso, logs y resultados normalizados. |
 | `GET` | `/api/passwords/capabilities` | Si | Estado de John, Hashcat, hashID, Crunch, CeWL, modos y wordlists. |
 | `GET` | `/api/passwords/wordlists` | Si | Inventario de wordlists bajo raices permitidas. |
 | `POST` | `/api/passwords/identify` | Si | Identificacion de formato probable de hash con hashID y heuristicas. |
