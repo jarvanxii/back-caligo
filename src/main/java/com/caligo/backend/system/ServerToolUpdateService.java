@@ -38,7 +38,7 @@ public class ServerToolUpdateService {
             aptGroupTool("openvas", "gvm-cli", "OpenVAS / GVM", "Reconocimiento", "Motor Greenbone GMP para tareas OpenVAS.", "gvm-cli --version", List.of("gvm", "gvmd", "openvas-scanner", "ospd-openvas", "gvm-tools")),
             aptTool("metasploit", "msfconsole", "Metasploit", "Vulnerabilidades", "Framework RPC para validacion controlada de exploits.", "msfconsole -v", "metasploit-framework"),
             aptTool("hydra", "hydra", "Hydra", "Fuerza bruta", "Validacion de credenciales en servicios de laboratorio.", "hydra -h", "hydra"),
-            aptTool("john", "john", "John the Ripper", "Contrasenas", "Auditoria local de hashes y password cracking.", "john --list=build-info", "john"),
+            aptTool("john", "john", "John the Ripper", "Contrasenas", "Auditoria local de hashes y password cracking.", "john", "john"),
             aptTool("hashcat", "hashcat", "Hashcat", "Contrasenas", "Cracking acelerado de hashes cuando hay GPU/CPU disponible.", "hashcat --version", "hashcat"),
             aptTool("curl", "curl", "Curl", "URLs", "Cliente HTTP para inspeccion, cabeceras y pruebas controladas.", "curl --version", "curl"),
             aptTool("openssl", "openssl", "OpenSSL", "URLs", "Inspeccion TLS, certificados y primitivas criptograficas.", "openssl version", "openssl"),
