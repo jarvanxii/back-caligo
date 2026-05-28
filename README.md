@@ -733,25 +733,40 @@ Herramientas instaladas para contrasenas: `john`, `john-data`, `hashcat`,
 ### Actualizaciones desde Caligo
 
 El endpoint `GET /api/system/tools` devuelve el inventario del servidor con
-version actual, binario detectado, grupo funcional y gestor (`apt`, `go` o
-`gem`). El frontend lo usa en `Ajustes > Actualizaciones`.
+version actual, binario detectado, grupo funcional y gestor (`apt`, `go`, `git`
+o `gem`). El frontend lo usa en `Ajustes > Actualizaciones`.
 
 El endpoint `POST /api/system/tools/{id}/update` solo acepta IDs definidos en el
 backend. No recibe comandos desde el navegador y requiere rol `ADMIN`. Cada
 accion se audita como `SYSTEM_TOOL_UPDATE_START`, `SYSTEM_TOOL_UPDATE_SUCCESS`
 o `SYSTEM_TOOL_UPDATE_FAILED`.
 
-Los updates usan comandos estaticos:
+Los updates no ejecutan comandos recibidos desde el navegador. El backend llama
+siempre a un helper root-owned con allowlist:
 
-- Paquetes APT: `sudo -n apt-get update` y `sudo -n apt-get install --only-upgrade -y <paquete>`.
-- Herramientas Go: `go install <modulo>@latest` en un `GOBIN` temporal y `sudo -n install` a `/usr/local/bin`.
-- Repositorios Git gestionados: `sudo -n git -C <repo> pull --ff-only`.
-- Gems: `sudo -n gem update <gem>`.
+```bash
+sudo -n /usr/local/sbin/caligo-tool-update <tool-id>
+```
 
-Para que APT/Gem funcionen desde el servicio sin hardcodear passwords, el
-servidor debe conceder `NOPASSWD` solo a los comandos de mantenimiento
-permitidos para el usuario del servicio. Si no existe ese permiso, el endpoint
-devuelve el fallo de `sudo -n` en la salida de la operacion y no queda bloqueado.
+El script de referencia vive en `ops/caligo-tool-update.sh` y se instala como
+`/usr/local/sbin/caligo-tool-update`, propietario `root:root` y modo `0755`.
+Dentro del script:
+
+- Paquetes APT: `apt-get update` y `apt-get install --only-upgrade -y <paquete>`.
+- Herramientas Go: `go install <modulo>@latest` en un `GOBIN` temporal e `install` a `/usr/local/bin`.
+- Repositorios Git gestionados: `git -C <repo> pull --ff-only`.
+- Gems: `gem update <gem>`.
+
+Para que funcione desde el servicio sin hardcodear passwords, el servidor debe
+conceder `NOPASSWD` solo al helper:
+
+```sudoers
+fran ALL=(root) NOPASSWD: /usr/local/sbin/caligo-tool-update *
+```
+
+El helper valida el `tool-id` con un `case` cerrado; si no existe ese permiso o
+la herramienta no esta allowlisted, el endpoint devuelve el fallo en la salida
+de la operacion y no queda bloqueado.
 
 ## Despliegue servidor
 

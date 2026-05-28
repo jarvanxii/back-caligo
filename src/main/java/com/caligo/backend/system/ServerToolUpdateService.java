@@ -13,7 +13,6 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -33,6 +32,7 @@ public class ServerToolUpdateService {
     private static final int MAX_OUTPUT_CHARS = 12_000;
     private static final Duration PROBE_TIMEOUT = Duration.ofSeconds(8);
     private static final Pattern VERSION_TOKEN = Pattern.compile("\\b(v?\\d+(?:\\.\\d+)+(?:[-+._a-zA-Z0-9]*)?)\\b");
+    private static final String UPDATE_HELPER = "/usr/local/sbin/caligo-tool-update";
     private static final List<ToolDefinition> TOOLS = List.of(
             aptTool("nmap", "nmap", "Nmap", "Reconocimiento", "Escaneo parametrizado de puertos, servicios y scripts NSE.", "nmap --version", "nmap"),
             aptGroupTool("openvas", "gvm-cli", "OpenVAS / GVM", "Reconocimiento", "Motor Greenbone GMP para tareas OpenVAS.", "gvm-cli --version", List.of("gvm", "gvmd", "openvas-scanner", "ospd-openvas", "gvm-tools")),
@@ -330,8 +330,6 @@ public class ServerToolUpdateService {
             String versionCommand,
             List<String> packageNames
     ) {
-        List<String> install = new ArrayList<>(List.of("sudo", "-n", "apt-get", "install", "--only-upgrade", "-y"));
-        install.addAll(packageNames);
         return new ToolDefinition(
                 id,
                 binary,
@@ -340,7 +338,7 @@ public class ServerToolUpdateService {
                 description,
                 versionCommand,
                 "apt",
-                List.of(List.of("sudo", "-n", "apt-get", "update"), List.copyOf(install))
+                helperUpdate(id)
         );
     }
 
@@ -361,7 +359,7 @@ public class ServerToolUpdateService {
                 description,
                 versionCommand,
                 "go",
-                List.of(List.of("sh", "-lc", "tmp=$(mktemp -d) && GOBIN=\"$tmp\" go install " + module + "@latest && sudo -n install -m 0755 \"$tmp/" + binary + "\" /usr/local/bin/" + binary + " && rm -rf \"$tmp\""))
+                helperUpdate(id)
         );
     }
 
@@ -382,7 +380,7 @@ public class ServerToolUpdateService {
                 description,
                 versionCommand,
                 "git",
-                List.of(List.of("sudo", "-n", "git", "-C", repositoryPath, "pull", "--ff-only"))
+                helperUpdate(id)
         );
     }
 
@@ -403,12 +401,16 @@ public class ServerToolUpdateService {
                 description,
                 versionCommand,
                 "gem",
-                List.of(List.of("sudo", "-n", "gem", "update", gemName))
+                helperUpdate(id)
         );
     }
 
     private static String preview(List<String> command) {
         return String.join(" ", command);
+    }
+
+    private static List<List<String>> helperUpdate(String id) {
+        return List.of(List.of("sudo", "-n", UPDATE_HELPER, id));
     }
 
     private record ToolDefinition(
