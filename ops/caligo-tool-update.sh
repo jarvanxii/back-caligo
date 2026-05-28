@@ -33,12 +33,17 @@ gem_update() {
 python_tool_update() {
   local package="$1"
   local binary="$2"
+  local pipx_home="/opt/caligo-pipx"
+  local pipx_bin="/opt/caligo-pipx/bin"
   apt-get update
   apt-get install -y python3 python3-pip python3-venv pipx
-  python3 -m pipx install --force "$package"
+  install -d -m 0755 "$pipx_home" "$pipx_bin"
+  PIPX_HOME="$pipx_home" PIPX_BIN_DIR="$pipx_bin" python3 -m pipx install --force "$package"
+  chmod -R a+rX "$pipx_home"
   for candidate in \
-    "/root/.local/bin/${binary}" \
+    "${pipx_bin}/${binary}" \
     "/usr/local/bin/${binary}" \
+    "/root/.local/bin/${binary}" \
     "/usr/bin/${binary}"; do
     if [ -x "$candidate" ]; then
       install -m 0755 "$candidate" "/usr/local/bin/${binary}"

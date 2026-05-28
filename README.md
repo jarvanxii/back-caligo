@@ -837,7 +837,7 @@ Dentro del script:
 - Herramientas Go: `go install <modulo>@latest` en un `GOBIN` temporal e `install` a `/usr/local/bin`.
 - Repositorios Git gestionados: `git -C <repo> pull --ff-only`.
 - Gems: `gem update <gem>`.
-- Herramientas Python OSINT: `pipx install --force <paquete>` con wrapper estable en `/usr/local/bin`.
+- Herramientas Python OSINT: `pipx install --force <paquete>` bajo `/opt/caligo-pipx` con wrapper estable en `/usr/local/bin`.
 - `theHarvester`: clon oficial en `/opt/theHarvester`, `uv sync` y wrapper `/usr/local/bin/theHarvester`.
 
 Para que funcione desde el servicio sin hardcodear passwords, el servidor debe
