@@ -136,9 +136,9 @@ public class OsintToolService {
                 ),
                 toolCapability("sherlock", "Sherlock", sherlockBinary, "sherlock --version", "Enumeracion de usernames en redes y plataformas publicas."),
                 toolCapability("maigret", "Maigret", maigretBinary, "maigret --version", "Correlacion profunda de usernames y perfiles OSINT."),
-                toolCapability("social-analyzer", "Social Analyzer", socialAnalyzerBinary, "social-analyzer --version", "Correlacion de nombres/usernames contra redes sociales."),
-                toolCapability("holehe", "Holehe", holeheBinary, "holehe --version", "Comprobacion de uso de email en servicios publicos."),
-                toolCapability("theharvester", "theHarvester", theHarvesterBinary, "theHarvester -h", "Recoleccion de emails, hosts y fuentes publicas por dominio.")
+                toolCapability("social-analyzer", "Social Analyzer", socialAnalyzerBinary, "/opt/caligo-pipx/venvs/social-analyzer/bin/python -c 'import importlib.metadata as m; print(m.version(\"social-analyzer\"))'", "Correlacion de nombres/usernames contra redes sociales."),
+                toolCapability("holehe", "Holehe", holeheBinary, "/opt/caligo-pipx/venvs/holehe/bin/python -c 'import importlib.metadata as m; print(m.version(\"holehe\"))'", "Comprobacion de uso de email en servicios publicos."),
+                toolCapability("theharvester", "theHarvester", theHarvesterBinary, "cd /opt/theHarvester && uv run python -c 'import importlib.metadata as m; print(m.version(\"theharvester\"))'", "Recoleccion de emails, hosts y fuentes publicas por dominio.")
         ));
         response.put("platforms", PROFILE_SITES.keySet().stream().sorted().toList());
         response.put("defaults", Map.of(
