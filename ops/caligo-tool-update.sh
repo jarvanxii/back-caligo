@@ -82,7 +82,7 @@ WRAPPER
 spiderfoot_update() {
   local repo="/opt/spiderfoot"
   apt-get update
-  apt-get install -y git python3 python3-pip python3-venv
+  apt-get install -y git python3 python3-dev python3-pip python3-venv build-essential libxml2-dev libxslt1-dev
   if [ -d "${repo}/.git" ]; then
     git -C "$repo" pull --ff-only
   else
