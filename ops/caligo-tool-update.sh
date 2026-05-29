@@ -91,7 +91,7 @@ spiderfoot_update() {
   fi
   python3 -m venv "${repo}/.venv"
   "${repo}/.venv/bin/pip" install --upgrade pip wheel
-  awk '/^lxml</ { print "lxml>=5.4,<7"; next } { print }' "${repo}/requirements.txt" >"${repo}/.caligo-requirements.txt"
+  awk '/^lxml[<>=]/ { print "lxml>=5.4,<7"; next } { print }' "${repo}/requirements.txt" >"${repo}/.caligo-requirements.txt"
   "${repo}/.venv/bin/pip" install -r "${repo}/.caligo-requirements.txt"
   cat >/usr/local/bin/spiderfoot <<'WRAPPER'
 #!/usr/bin/env bash
