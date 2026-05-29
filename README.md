@@ -326,6 +326,10 @@ Invoke-RestMethod `
 | `POST` | `/api/recon/openvas/scans` | Si | Crea tarea OpenVAS via GMP si GVM esta listo. |
 | `GET` | `/api/recon/openvas/scans/{id}` | Si | Estado, progreso y hallazgos OpenVAS. |
 | `GET` | `/api/recon/openvas/scans/{id}/report.pdf` | Si | Informe PDF descargable con logo Caligo. |
+| `GET` | `/api/recon/{tool}/capabilities` | Si | Capacidades de `assetfinder`, `dnsenum`, `dnsrecon`, `fierce` o `fping`. |
+| `POST` | `/api/recon/{tool}/scans` | Si | Crea job persistente con alcance confirmado y parametros visuales. |
+| `GET` | `/api/recon/{tool}/scans` | Si | Ultimos jobs del usuario para esa herramienta. |
+| `GET` | `/api/recon/{tool}/scans/{id}` | Si | Estado, progreso, comando y salida normalizada. |
 | `GET` | `/api/bruteforce/hydra/capabilities` | Si | Estado Hydra, servicios soportados, modos de credenciales y wordlists permitidas. |
 | `POST` | `/api/bruteforce/hydra/runs` | Si | Crea job Hydra con alcance validado y credenciales redaccionadas en preview/logs. |
 | `GET` | `/api/bruteforce/hydra/runs` | Si | Ultimos jobs Hydra del usuario. |
@@ -849,6 +853,16 @@ El inventario de URLs detecta estas herramientas cuando existen en `PATH`:
 Herramientas instaladas en el servidor 2 durante el primer despliegue: `nmap`, `ffuf`, `john`, `hashcat`, `hashid`, `crunch`, `cewl`, `exiftool`, `steghide`, `binwalk`, `zsteg`, `httpx`, `katana`, `gau`, `subfinder` y `amass`.
 
 Herramientas instaladas para reconocimiento activo: `nmap`, `gvm`, `gvmd`, `openvas-scanner`, `ospd-openvas` y `gvm-tools`. Las herramientas activas deben ejecutarse siempre con alcance autorizado, trazabilidad, limites y registro de usuario.
+
+Herramientas instaladas para SCAN/DNS: `assetfinder`, `dnsenum`, `dnsrecon`,
+`fierce` y `fping`. Todas usan endpoints tokenizados bajo
+`/api/recon/{tool}/scans`, guardan jobs en `tool_execution_jobs` y requieren que
+el usuario confirme alcance autorizado. `fping` queda restringido a objetivos
+privados/locales salvo que `CALIGO_RECON_ALLOW_EXTERNAL_TARGETS=true`; las
+herramientas DNS aceptan dominios autorizados y no aceptan rutas, comandos ni
+wordlists arbitrarias desde el navegador. Las wordlists de brute force DNS se
+generan como temporales controlados (`small`, `extended` o lista personalizada
+validada por etiquetas DNS).
 
 Herramientas instaladas para validacion controlada: `metasploit-framework` con
 `msgrpc` gestionado por systemd y expuesto solo en localhost. El modulo de

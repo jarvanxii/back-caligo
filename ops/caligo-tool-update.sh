@@ -56,6 +56,20 @@ python_tool_update() {
   }
 }
 
+dnsrecon_update() {
+  python_tool_update dnsrecon dnsrecon
+  for f in \
+    /opt/caligo-pipx/venvs/dnsrecon/lib/python*/site-packages/dnsrecon/lib/bingenum.py \
+    /opt/caligo-pipx/venvs/dnsrecon/lib/python*/site-packages/dnsrecon/lib/yandexenum.py \
+    /opt/caligo-pipx/venvs/venvs/dnsrecon/lib/python*/site-packages/dnsrecon/lib/bingenum.py \
+    /opt/caligo-pipx/venvs/venvs/dnsrecon/lib/python*/site-packages/dnsrecon/lib/yandexenum.py \
+    /usr/share/dnsrecon/dnsrecon/lib/bingenum.py \
+    /usr/share/dnsrecon/dnsrecon/lib/yandexenum.py; do
+    [ -f "$f" ] || continue
+    sed -i 's/url_opener = urllib\.request\.FancyURLopener/url_opener = object/g' "$f"
+  done
+}
+
 theharvester_update() {
   local repo="/opt/theHarvester"
   apt-get update
@@ -178,6 +192,21 @@ case "$tool" in
     ;;
   amass)
     go_update 'github.com/owasp-amass/amass/v4/...' amass
+    ;;
+  assetfinder)
+    go_update github.com/tomnomnom/assetfinder assetfinder
+    ;;
+  dnsenum)
+    apt_update dnsenum
+    ;;
+  dnsrecon)
+    dnsrecon_update
+    ;;
+  fierce)
+    apt_update fierce
+    ;;
+  fping)
+    apt_update fping
     ;;
   sherlock)
     python_tool_update sherlock-project sherlock

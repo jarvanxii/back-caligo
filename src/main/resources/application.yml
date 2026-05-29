@@ -46,6 +46,17 @@ caligo:
     nmap:
       binary: ${CALIGO_NMAP_BINARY:nmap}
       timeout-seconds: ${CALIGO_NMAP_TIMEOUT_SECONDS:900}
+    dns-timeout-seconds: ${CALIGO_RECON_DNS_TIMEOUT_SECONDS:600}
+    assetfinder:
+      binary: ${CALIGO_ASSETFINDER_BINARY:/usr/local/bin/assetfinder}
+    dnsenum:
+      binary: ${CALIGO_DNSENUM_BINARY:dnsenum}
+    dnsrecon:
+      binary: ${CALIGO_DNSRECON_BINARY:/usr/local/bin/dnsrecon}
+    fierce:
+      binary: ${CALIGO_FIERCE_BINARY:fierce}
+    fping:
+      binary: ${CALIGO_FPING_BINARY:fping}
     openvas:
       gvm-cli: ${CALIGO_GVM_CLI:gvm-cli}
       socket: ${CALIGO_GVM_SOCKET:/run/gvmd/gvmd.sock}

@@ -22,10 +22,16 @@ import java.util.UUID;
 public class ReconController {
 
     private final ReconExecutionService executionService;
+    private final ReconDnsToolService dnsToolService;
     private final ReconReportService reportService;
 
-    public ReconController(ReconExecutionService executionService, ReconReportService reportService) {
+    public ReconController(
+            ReconExecutionService executionService,
+            ReconDnsToolService dnsToolService,
+            ReconReportService reportService
+    ) {
         this.executionService = executionService;
+        this.dnsToolService = dnsToolService;
         this.reportService = reportService;
     }
 
@@ -75,6 +81,31 @@ public class ReconController {
     @GetMapping(value = "/openvas/scans/{id}/report.pdf", produces = MediaType.APPLICATION_PDF_VALUE)
     public ResponseEntity<byte[]> openVasReport(@PathVariable UUID id, Authentication authentication) {
         return report(id, authentication, "openvas");
+    }
+
+    @GetMapping("/{tool:assetfinder|dnsenum|dnsrecon|fierce|fping}/capabilities")
+    public Map<String, Object> dnsToolCapabilities(@PathVariable String tool) {
+        return dnsToolService.capabilities(tool);
+    }
+
+    @PostMapping("/{tool:assetfinder|dnsenum|dnsrecon|fierce|fping}/scans")
+    public Map<String, Object> startDnsTool(
+            @PathVariable String tool,
+            @Valid @RequestBody ReconCliScanRequest request,
+            Authentication authentication,
+            HttpServletRequest servletRequest
+    ) {
+        return dnsToolService.start(tool, request, authentication.getName(), remoteIp(servletRequest));
+    }
+
+    @GetMapping("/{tool:assetfinder|dnsenum|dnsrecon|fierce|fping}/scans")
+    public Object dnsToolJobs(@PathVariable String tool, Authentication authentication) {
+        return dnsToolService.recentJobs(tool, authentication.getName());
+    }
+
+    @GetMapping("/{tool:assetfinder|dnsenum|dnsrecon|fierce|fping}/scans/{id}")
+    public Map<String, Object> dnsToolJob(@PathVariable String tool, @PathVariable UUID id, Authentication authentication) {
+        return dnsToolService.job(id, authentication.getName(), tool);
     }
 
     private ResponseEntity<byte[]> report(UUID id, Authentication authentication, String tool) {
