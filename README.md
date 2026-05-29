@@ -428,6 +428,35 @@ o `filesystem`), `target`, `results`, `branch`, `maxDepth`, `concurrency`,
 dentro de `CALIGO_TRUFFLEHOG_ALLOWED_ROOTS`, y los secretos devueltos se
 redactan antes de guardarse.
 
+### Smoke test OSINT
+
+Validacion realizada contra el backend LAN `192.168.0.253:8080` con JWT real y
+objetivos seguros o fixtures locales. No se usan personas reales ni activos sin
+autorizacion.
+
+| Herramienta | Parametros de prueba | Resultado esperado |
+| --- | --- | --- |
+| Caligo People | `query=OpenAI`, plataformas `linkedin`, `github` | Respuesta 200 con consultas/candidatos normalizados. |
+| Email Exposure | `security@iana.org`, candidatos activados | Dominio, MX y candidatos profesionales. |
+| Phone Lookup | `+1 202 555 0100`, pais `US` | Normalizacion E.164 y clasificacion local. |
+| Domain Contacts | `iana.org`, rutas `security.txt`, `contact`, `about` | Recursos HTTP y contactos publicados si existen. |
+| Password Exposure | `password123` | Conteo k-anon desde Pwned Passwords. |
+| Metadata Exposure | `https://www.iana.org/` | HTTP 200, cabeceras y metadatos visibles. |
+| Public Files | `iana.org`, `robots.txt`, `sitemap.xml`, `security.txt` | Inventario de ficheros publicos. |
+| Sherlock | `github`, timeout 10 | Job `COMPLETED` con perfiles encontrados. |
+| Maigret | `github`, top sites 20 | Job `COMPLETED` con perfiles encontrados. |
+| Social Analyzer | `github`, top sites 20 | Job `COMPLETED` con perfiles encontrados. |
+| Holehe | `test@example.com`, timeout 5 | Job `COMPLETED`, aunque no haya servicios positivos. |
+| theHarvester | `iana.org`, fuente `crtsh`, limite 20 | Job `COMPLETED` con hosts o referencias publicas. |
+| git-dumper | Fixture local `http://127.0.0.1:8099/.git/` | Repositorio recuperado en salida controlada. |
+| SpiderFoot | `iana.org`, modulos `sfp_dnsresolve`, `sfp_crtsh` | Job `COMPLETED` con eventos OSINT. |
+| TruffleHog | Fixture local en `/tmp/caligo/git-dumper/trufflehog-fixture` | Secreto sintetico detectado y redactado. |
+
+Nota operativa: la version instalada de `git-dumper` (`1.0.9`) soporta jobs,
+reintentos, timeout, user-agent, proxy y headers, pero no seleccion de ramas; la
+vista no debe prometer branch selection hasta cambiar de motor o envolver la
+recuperacion con logica Git posterior.
+
 Ejemplo `Email Exposure`:
 
 ```json
