@@ -101,6 +101,13 @@ WRAPPER
   chmod 0755 /usr/local/bin/spiderfoot
 }
 
+trufflehog_update() {
+  apt-get update
+  apt-get install -y curl ca-certificates
+  curl -sSfL https://raw.githubusercontent.com/trufflesecurity/trufflehog/main/scripts/install.sh | sh -s -- -b /usr/local/bin
+  chmod 0755 /usr/local/bin/trufflehog
+}
+
 case "$tool" in
   nmap)
     apt_update nmap
@@ -194,7 +201,7 @@ case "$tool" in
     spiderfoot_update
     ;;
   trufflehog)
-    go_update github.com/trufflesecurity/trufflehog/v3 trufflehog
+    trufflehog_update
     ;;
   wireguard)
     apt_update wireguard-tools
