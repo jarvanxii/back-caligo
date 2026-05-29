@@ -83,6 +83,15 @@ public class OsintToolController {
         return osintToolService.startTheHarvester(request, authentication.getName(), remoteIp(servletRequest));
     }
 
+    @PostMapping("/git-dumper/runs")
+    public Map<String, Object> startGitDumper(
+            @Valid @RequestBody GitDumperRequest request,
+            Authentication authentication,
+            HttpServletRequest servletRequest
+    ) {
+        return osintToolService.startGitDumper(request, authentication.getName(), remoteIp(servletRequest));
+    }
+
     @GetMapping("/{tool}/runs")
     public List<Map<String, Object>> runs(@PathVariable String tool, Authentication authentication) {
         return osintToolService.recentJobs(tool, authentication.getName());

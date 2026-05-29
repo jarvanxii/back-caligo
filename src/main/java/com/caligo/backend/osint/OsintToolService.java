@@ -25,6 +25,8 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -46,6 +48,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.regex.MatchResult;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 @Service
 public class OsintToolService {
@@ -53,11 +56,14 @@ public class OsintToolService {
     private static final Pattern SAFE_PERSON = Pattern.compile("(?U)^[\\p{L}\\p{N}][\\p{L}\\p{N} .,'_\\-]{1,139}$");
     private static final Pattern SAFE_USERNAME = Pattern.compile("^[A-Za-z0-9][A-Za-z0-9._\\-]{1,63}$");
     private static final Pattern SAFE_DOMAIN = Pattern.compile("(?i)^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,30}$");
+    private static final Pattern SAFE_HOST = Pattern.compile("(?i)^(?:(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,30}|(?:\\d{1,3}\\.){3}\\d{1,3})$");
     private static final Pattern SAFE_SOURCE = Pattern.compile("^[a-zA-Z0-9_-]{2,40}$");
+    private static final Pattern SAFE_HEADER = Pattern.compile("^[A-Za-z0-9-]{2,48}:\\s?[^\\r\\n]{1,130}$");
+    private static final Pattern SAFE_BRANCH = Pattern.compile("^[A-Za-z0-9._/\\-]{1,90}$");
     private static final Pattern EMAIL_PATTERN = Pattern.compile("[A-Za-z0-9._%+\\-]+@[A-Za-z0-9.\\-]+\\.[A-Za-z]{2,24}");
     private static final Pattern URL_PATTERN = Pattern.compile("https?://[^\\s\"'<>\\])}]+", Pattern.CASE_INSENSITIVE);
     private static final Pattern HOST_PATTERN = Pattern.compile("(?i)\\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,30}\\b");
-    private static final Set<String> JOB_TOOLS = Set.of("sherlock", "maigret", "social-analyzer", "holehe", "theharvester");
+    private static final Set<String> JOB_TOOLS = Set.of("sherlock", "maigret", "social-analyzer", "holehe", "theharvester", "git-dumper");
     private static final Map<String, String> PROFILE_SITES = Map.ofEntries(
             Map.entry("linkedin", "linkedin.com/in"),
             Map.entry("github", "github.com"),
@@ -82,6 +88,8 @@ public class OsintToolService {
     private final String socialAnalyzerBinary;
     private final String holeheBinary;
     private final String theHarvesterBinary;
+    private final String gitDumperBinary;
+    private final Path gitDumperOutputRoot;
     private final int maxOutputBytes;
     private final long defaultTimeoutSeconds;
 
@@ -94,6 +102,8 @@ public class OsintToolService {
             @Value("${caligo.osint.social-analyzer.binary:social-analyzer}") String socialAnalyzerBinary,
             @Value("${caligo.osint.holehe.binary:holehe}") String holeheBinary,
             @Value("${caligo.osint.theharvester.binary:theHarvester}") String theHarvesterBinary,
+            @Value("${caligo.osint.git-dumper.binary:git-dumper}") String gitDumperBinary,
+            @Value("${caligo.osint.git-dumper.output-dir:/tmp/caligo/git-dumper}") String gitDumperOutputRoot,
             @Value("${caligo.osint.max-output-bytes:1048576}") int maxOutputBytes,
             @Value("${caligo.osint.timeout-seconds:600}") long defaultTimeoutSeconds
     ) {
@@ -105,6 +115,8 @@ public class OsintToolService {
         this.socialAnalyzerBinary = socialAnalyzerBinary;
         this.holeheBinary = holeheBinary;
         this.theHarvesterBinary = theHarvesterBinary;
+        this.gitDumperBinary = gitDumperBinary;
+        this.gitDumperOutputRoot = Path.of(gitDumperOutputRoot).toAbsolutePath().normalize();
         this.maxOutputBytes = maxOutputBytes;
         this.defaultTimeoutSeconds = defaultTimeoutSeconds;
         this.httpClient = HttpClient.newBuilder()
@@ -138,7 +150,14 @@ public class OsintToolService {
                 toolCapability("maigret", "Maigret", maigretBinary, "maigret --version", "Correlacion profunda de usernames y perfiles OSINT."),
                 toolCapability("social-analyzer", "Social Analyzer", socialAnalyzerBinary, "/opt/caligo-pipx/venvs/social-analyzer/bin/python -c 'import importlib.metadata as m; print(m.version(\"social-analyzer\"))'", "Correlacion de nombres/usernames contra redes sociales."),
                 toolCapability("holehe", "Holehe", holeheBinary, "/opt/caligo-pipx/venvs/holehe/bin/python -c 'import importlib.metadata as m; print(m.version(\"holehe\"))'", "Comprobacion de uso de email en servicios publicos."),
-                toolCapability("theharvester", "theHarvester", theHarvesterBinary, "cd /opt/theHarvester && uv run python -c 'import importlib.metadata as m; print(m.version(\"theharvester\"))'", "Recoleccion de emails, hosts y fuentes publicas por dominio.")
+                toolCapability("theharvester", "theHarvester", theHarvesterBinary, "cd /opt/theHarvester && uv run python -c 'import importlib.metadata as m; print(m.version(\"theharvester\"))'", "Recoleccion de emails, hosts y fuentes publicas por dominio."),
+                toolCapability("git-dumper", "git-dumper", gitDumperBinary, "git-dumper --help | head -n 1", "Recuperacion controlada de repositorios .git expuestos."),
+                Map.of("id", "email-exposure", "label", "Email Exposure", "binary", "backend-http", "available", true, "version", "server-side", "description", "Analisis seguro de email, dominio, MX y patrones profesionales."),
+                Map.of("id", "phone-lookup", "label", "Phone Lookup", "binary", "backend-http", "available", true, "version", "server-side", "description", "Normalizacion y validacion del telefono aportado por el usuario."),
+                Map.of("id", "domain-contacts", "label", "Domain Contacts", "binary", "backend-http", "available", true, "version", "server-side", "description", "Extraccion de contactos publicados por dominios autorizados."),
+                Map.of("id", "password-exposure", "label", "Password Exposure Check", "binary", "Pwned Passwords", "available", true, "version", "k-anonymity", "description", "Comprobacion k-anon de passwords sin enviar el secreto completo."),
+                Map.of("id", "metadata-exposure", "label", "Metadata Exposure", "binary", "backend-http", "available", true, "version", "server-side", "description", "Cabeceras y metadatos visibles de documentos publicos."),
+                Map.of("id", "public-files", "label", "Public Files", "binary", "backend-http", "available", true, "version", "server-side", "description", "Inventario de ficheros publicos habituales del dominio.")
         ));
         response.put("platforms", PROFILE_SITES.keySet().stream().sorted().toList());
         response.put("defaults", Map.of(
@@ -271,6 +290,53 @@ public class OsintToolService {
                 String.valueOf(limit)
         ));
         return startJob(username, remoteIp, "theharvester", target, storedParameters(request), command, timeout + 30, this::parseTheHarvester);
+    }
+
+    public Map<String, Object> startGitDumper(GitDumperRequest request, String username, String remoteIp) {
+        requireAuthorized(request.authorized());
+        requireCommand(gitDumperBinary, "git-dumper");
+        URI targetUri = sanitizeGitDumperUrl(request.url(), Boolean.TRUE.equals(request.appendGitPath()));
+        int jobsCount = clamp(value(request.jobs(), 10), 1, 40);
+        int retryCount = clamp(value(request.retry(), 3), 0, 10);
+        int cliTimeout = clamp(value(request.timeoutSeconds(), 120), 5, 900);
+        List<String> headers = sanitizeHeaders(request.headers());
+        List<String> branches = sanitizeBranches(request.branches());
+        String proxy = sanitizeProxy(request.proxy());
+        String userAgent = sanitizeUserAgent(request.userAgent());
+        Path outputDir = gitDumperOutputDirectory(username);
+
+        List<String> command = new ArrayList<>(List.of(
+                gitDumperBinary,
+                "--jobs",
+                String.valueOf(jobsCount),
+                "--retry",
+                String.valueOf(retryCount),
+                "--timeout",
+                String.valueOf(cliTimeout)
+        ));
+        if (hasText(userAgent)) {
+            command.add("--user-agent");
+            command.add(userAgent);
+        }
+        if (hasText(proxy)) {
+            command.add("--proxy");
+            command.add(proxy);
+        }
+        for (String header : headers) {
+            command.add("--header");
+            command.add(header);
+        }
+        for (String branch : branches) {
+            command.add("--branch");
+            command.add(branch);
+        }
+        command.add(targetUri.toString());
+        command.add(outputDir.toString());
+
+        Map<String, Object> parameters = storedParameters(request);
+        parameters.put("normalizedUrl", targetUri.toString());
+        parameters.put("outputDir", outputDir.toString());
+        return startJob(username, remoteIp, "git-dumper", targetUri.toString(), parameters, command, cliTimeout + 120, (stdout, stderr, exitCode) -> parseGitDumper(stdout, stderr, exitCode, outputDir));
     }
 
     public Map<String, Object> job(UUID id, String username, String tool) {
@@ -490,6 +556,63 @@ public class OsintToolService {
         return result;
     }
 
+    private Map<String, Object> parseGitDumper(String stdout, String stderr, int exitCode, Path outputDir) {
+        List<Map<String, Object>> files = new ArrayList<>();
+        long totalBytes = 0;
+        try (Stream<Path> paths = Files.exists(outputDir) ? Files.walk(outputDir) : Stream.empty()) {
+            List<Path> regularFiles = paths
+                    .filter(Files::isRegularFile)
+                    .sorted()
+                    .toList();
+            for (Path file : regularFiles) {
+                long size = safeFileSize(file);
+                totalBytes += size;
+                if (files.size() < 120) {
+                    String relative = outputDir.relativize(file).toString().replace('\\', '/');
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("path", relative);
+                    row.put("size", size);
+                    row.put("category", classifyGitDumpFile(relative));
+                    files.add(row);
+                }
+            }
+        } catch (IOException ignored) {
+            // La salida parcial del CLI sigue siendo util aunque falle el inventario de ficheros.
+        }
+
+        boolean repositoryRecovered = files.stream()
+                .map(item -> value(item.get("path")))
+                .anyMatch(path -> path.startsWith(".git/") || path.equals(".git"));
+        List<Map<String, Object>> findings = new ArrayList<>();
+        if (repositoryRecovered || !files.isEmpty()) {
+            findings.add(Map.of("type", "repository", "value", "artefactos recuperados", "score", 78));
+        }
+        files.stream()
+                .filter(item -> Set.of("git-metadata", "source", "config").contains(value(item.get("category"))))
+                .limit(12)
+                .forEach(item -> findings.add(Map.of(
+                        "type", item.get("category"),
+                        "value", item.get("path"),
+                        "score", "config".equals(item.get("category")) ? 86 : 68
+                )));
+
+        Map<String, Object> result = baseResult(exitCode, stdout, stderr);
+        result.put("outputDir", outputDir.toString());
+        result.put("fileCount", files.size());
+        result.put("totalBytes", totalBytes);
+        result.put("repositoryRecovered", repositoryRecovered);
+        result.put("files", files);
+        result.put("findings", findings);
+        result.put("findingCount", findings.size());
+        result.put("summary", Map.of(
+                "files", files.size(),
+                "bytes", totalBytes,
+                "repositoryRecovered", repositoryRecovered,
+                "outputDir", outputDir.toString()
+        ));
+        return result;
+    }
+
     private Map<String, Object> baseResult(int exitCode, String stdout, String stderr) {
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("exitCode", exitCode);
@@ -620,6 +743,152 @@ public class OsintToolService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Dominio no valido");
         }
         return domain;
+    }
+
+    private URI sanitizeGitDumperUrl(String value, boolean appendGitPath) {
+        String raw = text(value);
+        if (!raw.startsWith("http://") && !raw.startsWith("https://")) {
+            raw = "https://" + raw;
+        }
+        try {
+            URI uri = URI.create(raw);
+            String scheme = text(uri.getScheme()).toLowerCase(Locale.ROOT);
+            if (!Set.of("http", "https").contains(scheme) || hasText(uri.getUserInfo())) {
+                throw new IllegalArgumentException("scheme");
+            }
+            String host = text(uri.getHost()).toLowerCase(Locale.ROOT);
+            if (!SAFE_HOST.matcher(host).matches() || isInvalidIpv4Literal(host)) {
+                throw new IllegalArgumentException("host");
+            }
+            String path = hasText(uri.getRawPath()) ? uri.getRawPath() : "/";
+            if (appendGitPath && !path.toLowerCase(Locale.ROOT).contains("/.git")) {
+                path = path.replaceAll("/+$", "") + "/.git/";
+            }
+            String query = hasText(uri.getRawQuery()) ? "?" + uri.getRawQuery() : "";
+            return URI.create(scheme + "://" + host + path + query);
+        } catch (Exception ex) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "URL de repositorio .git no valida");
+        }
+    }
+
+    private List<String> sanitizeHeaders(List<String> values) {
+        if (values == null || values.isEmpty()) {
+            return List.of();
+        }
+        return values.stream()
+                .map(OsintToolService::text)
+                .filter(SAFE_HEADER.asMatchPredicate())
+                .filter(header -> {
+                    String name = header.split(":", 2)[0].toLowerCase(Locale.ROOT);
+                    return !Set.of("authorization", "cookie", "proxy-authorization").contains(name);
+                })
+                .distinct()
+                .limit(8)
+                .toList();
+    }
+
+    private List<String> sanitizeBranches(List<String> values) {
+        if (values == null || values.isEmpty()) {
+            return List.of();
+        }
+        return values.stream()
+                .map(OsintToolService::text)
+                .filter(branch -> SAFE_BRANCH.matcher(branch).matches())
+                .filter(branch -> !branch.contains(".."))
+                .distinct()
+                .limit(8)
+                .toList();
+    }
+
+    private String sanitizeUserAgent(String value) {
+        String userAgent = text(value);
+        if (!hasText(userAgent)) {
+            return "";
+        }
+        if (userAgent.length() > 180 || userAgent.matches(".*[\\r\\n].*")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "User-Agent no valido");
+        }
+        return userAgent;
+    }
+
+    private String sanitizeProxy(String value) {
+        String proxy = text(value);
+        if (!hasText(proxy)) {
+            return "";
+        }
+        try {
+            URI uri = URI.create(proxy);
+            String scheme = text(uri.getScheme()).toLowerCase(Locale.ROOT);
+            if (!Set.of("http", "https", "socks4", "socks5").contains(scheme) || hasText(uri.getUserInfo())) {
+                throw new IllegalArgumentException("proxy");
+            }
+            String host = text(uri.getHost()).toLowerCase(Locale.ROOT);
+            int port = uri.getPort();
+            if (!SAFE_HOST.matcher(host).matches() || port < 1 || port > 65535 || isInvalidIpv4Literal(host)) {
+                throw new IllegalArgumentException("proxy");
+            }
+            return proxy;
+        } catch (Exception ex) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Proxy no valido");
+        }
+    }
+
+    private Path gitDumperOutputDirectory(String username) {
+        String safeUser = text(username).replaceAll("[^A-Za-z0-9._-]", "_");
+        Path output = gitDumperOutputRoot.resolve(safeUser).resolve(UUID.randomUUID().toString()).normalize();
+        if (!output.startsWith(gitDumperOutputRoot)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Directorio de salida no valido");
+        }
+        try {
+            Files.createDirectories(output);
+            return output;
+        } catch (IOException ex) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "No se pudo preparar la salida de git-dumper");
+        }
+    }
+
+    private void requireAuthorized(Boolean authorized) {
+        if (!Boolean.TRUE.equals(authorized)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Confirma alcance autorizado antes de ejecutar git-dumper.");
+        }
+    }
+
+    private long safeFileSize(Path file) {
+        try {
+            return Files.size(file);
+        } catch (IOException ex) {
+            return 0L;
+        }
+    }
+
+    private String classifyGitDumpFile(String path) {
+        String lower = path.toLowerCase(Locale.ROOT);
+        if (lower.equals(".git/config") || lower.endsWith("/.git/config")) {
+            return "config";
+        }
+        if (lower.startsWith(".git/") || lower.contains("/.git/")) {
+            return "git-metadata";
+        }
+        if (lower.endsWith(".java") || lower.endsWith(".js") || lower.endsWith(".ts") || lower.endsWith(".vue") || lower.endsWith(".py") || lower.endsWith(".php") || lower.endsWith(".go") || lower.endsWith(".rb")) {
+            return "source";
+        }
+        if (lower.contains("secret") || lower.endsWith(".env") || lower.contains("credential")) {
+            return "sensitive-name";
+        }
+        return "file";
+    }
+
+    private boolean isInvalidIpv4Literal(String host) {
+        if (!host.matches("^(?:\\d{1,3}\\.){3}\\d{1,3}$")) {
+            return false;
+        }
+        for (String part : host.split("\\.")) {
+            int value = parseInt(part);
+            if (value < 0 || value > 255) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private String sanitizeJobTool(String tool) {
@@ -774,6 +1043,14 @@ public class OsintToolService {
             return Integer.parseInt(String.valueOf(value));
         } catch (Exception ex) {
             return 0;
+        }
+    }
+
+    private int parseInt(String value) {
+        try {
+            return Integer.parseInt(text(value));
+        } catch (Exception ex) {
+            return -1;
         }
     }
 

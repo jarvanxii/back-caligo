@@ -2,7 +2,7 @@
 
 Backend Spring Boot de Caligo. Expone una API REST con JWT, Flyway y MariaDB para ejecutar herramientas de laboratorio de ciberseguridad en entornos controlados.
 
-Los modulos funcionales actuales son **URLs**, **Reconocimiento activo**, **OSINT**, **Metasploit**, **Fuerza bruta controlada** y **Contrasenas**. URLs cubre DNS, inspeccion URL, HTTP, TLS, reputacion, historial, archivos publicos, endpoints pasivos e inventario de herramientas locales. Reconocimiento activo cubre jobs de **Nmap** y adaptador **OpenVAS/GVM** con JWT, auditoria, validacion de alcance y progreso. OSINT integra **Caligo People**, **Sherlock**, **Maigret**, **Social Analyzer**, **Holehe** y **theHarvester** para perfiles publicos, usernames, emails y dominios. Metasploit expone RPC local para discovery asistido, recomendaciones de modulos, ejecucion controlada y gestion de sesiones de laboratorio. Fuerza bruta integra **Hydra** con alcance privado/local, fuentes de credenciales del servidor y trazas redaccionadas. Contrasenas integra **John the Ripper**, **Hashcat**, **hashID**, **Crunch**, **CeWL** y wordlists permitidas del servidor.
+Los modulos funcionales actuales son **URLs**, **Reconocimiento activo**, **OSINT**, **Metasploit**, **Fuerza bruta controlada** y **Contrasenas**. URLs cubre DNS, inspeccion URL, HTTP, TLS, reputacion, historial, archivos publicos, endpoints pasivos e inventario de herramientas locales. Reconocimiento activo cubre jobs de **Nmap** y adaptador **OpenVAS/GVM** con JWT, auditoria, validacion de alcance y progreso. OSINT integra **Caligo People**, **Sherlock**, **Maigret**, **Social Analyzer**, **Holehe**, **theHarvester**, **git-dumper** y utilidades de exposicion autorizada para emails, telefonos aportados, contactos de dominio, passwords y documentos publicos. Metasploit expone RPC local para discovery asistido, recomendaciones de modulos, ejecucion controlada y gestion de sesiones de laboratorio. Fuerza bruta integra **Hydra** con alcance privado/local, fuentes de credenciales del servidor y trazas redaccionadas. Contrasenas integra **John the Ripper**, **Hashcat**, **hashID**, **Crunch**, **CeWL** y wordlists permitidas del servidor.
 El panel de sistema expone inventario versionado de herramientas instaladas y actualizaciones controladas por allowlist.
 
 ## Stack
@@ -22,7 +22,9 @@ El panel de sistema expone inventario versionado de herramientas instaladas y ac
 - Nmap CLI en el servidor.
 - Greenbone/OpenVAS via `gvm-cli` cuando GVM esta inicializado.
 - Metasploit Framework via MessagePack RPC (`msgrpc`) escuchando solo en localhost.
-- Sherlock, Maigret, Social Analyzer, Holehe y theHarvester instalados en el servidor para OSINT.
+- Sherlock, Maigret, Social Analyzer, Holehe, theHarvester y git-dumper instalados en el servidor para OSINT.
+- Endpoints OSINT server-side para Email Exposure, Phone Lookup, Domain Contacts, Password Exposure, Metadata Exposure y Public Files.
+- Pwned Passwords se consulta con k-anonimato y no requiere API key.
 - Hydra CLI para simulaciones de fuerza bruta en laboratorio.
 - John the Ripper y Hashcat para auditoria offline de hashes.
 - hashID para identificacion de formatos probables.
@@ -147,6 +149,8 @@ http://localhost:8080
 | `CALIGO_MAIGRET_BINARY` | `maigret` | Binario Maigret. |
 | `CALIGO_SOCIAL_ANALYZER_BINARY` | `social-analyzer` | Binario Social Analyzer. |
 | `CALIGO_HOLEHE_BINARY` | `holehe` | Binario Holehe. |
+| `CALIGO_GIT_DUMPER_BINARY` | `git-dumper` | Binario git-dumper. |
+| `CALIGO_GIT_DUMPER_OUTPUT_DIR` | `/tmp/caligo/git-dumper` | Directorio controlado para artefactos recuperados por git-dumper. |
 | `CALIGO_THEHARVESTER_BINARY` | `theHarvester` | Binario theHarvester. |
 | `CALIGO_PASSWORDS_ALLOW_EXTERNAL_TARGETS` | `false` | Si `false`, CeWL solo acepta URLs privadas/locales. |
 | `CALIGO_PASSWORDS_MAX_OUTPUT_BYTES` | `1048576` | Limite de salida capturada por John, Hashcat, Crunch y CeWL. |
@@ -194,7 +198,7 @@ Catalogo de modulos visibles desde el frontend.
 | `enabled` | `boolean` | Control de visibilidad. |
 | `created_at` | `datetime(6)` | Alta. |
 
-Modulos iniciales: `urls`, `nmap`, `openvas`, `metasploit`, `bruteforce`, `nuclei`, `searchsploit`, `nikto`, `sqlmap`, `osint-profile-search`, `sherlock`, `maigret`, `social-analyzer`, `holehe`, `theharvester`, `passwords`, `encoding`, `steganography`.
+Modulos iniciales: `urls`, `nmap`, `openvas`, `metasploit`, `bruteforce`, `nuclei`, `searchsploit`, `nikto`, `sqlmap`, `osint-profile-search`, `sherlock`, `maigret`, `social-analyzer`, `holehe`, `theharvester`, `git-dumper`, `passwords`, `encoding`, `steganography`.
 
 ### `audit_events`
 
@@ -336,8 +340,16 @@ Invoke-RestMethod `
 | `POST` | `/api/osint/social-analyzer/runs` | Si | Crea job Social Analyzer por nombre, alias o username. |
 | `POST` | `/api/osint/holehe/runs` | Si | Crea job Holehe por email. |
 | `POST` | `/api/osint/theharvester/runs` | Si | Crea job theHarvester por dominio. |
+| `POST` | `/api/osint/git-dumper/runs` | Si | Crea job git-dumper contra un `.git` expuesto en alcance autorizado. |
 | `GET` | `/api/osint/{tool}/runs` | Si | Ultimos jobs OSINT del usuario. |
 | `GET` | `/api/osint/{tool}/runs/{id}` | Si | Estado, progreso, logs y resultados normalizados. |
+| `GET` | `/api/osint/exposure/capabilities` | Si | Capacidades de utilidades OSINT server-side de exposicion autorizada. |
+| `POST` | `/api/osint/exposure/email` | Si | Valida email/dominio, MX y patrones profesionales sin tocar buzones. |
+| `POST` | `/api/osint/exposure/phone` | Si | Normaliza y clasifica un telefono aportado por el usuario. |
+| `POST` | `/api/osint/exposure/domain-contacts` | Si | Extrae contactos publicados en paginas habituales del dominio autorizado. |
+| `POST` | `/api/osint/exposure/password` | Si | Consulta Pwned Passwords con k-anonimato SHA-1 prefix. |
+| `POST` | `/api/osint/exposure/metadata` | Si | Inspecciona cabeceras y metadatos visibles de una URL publica autorizada. |
+| `POST` | `/api/osint/exposure/public-files` | Si | Comprueba ficheros publicos tipicos del dominio: robots, sitemap, security.txt y well-known. |
 | `GET` | `/api/passwords/capabilities` | Si | Estado de John, Hashcat, hashID, Crunch, CeWL, modos y wordlists. |
 | `GET` | `/api/passwords/wordlists` | Si | Inventario de wordlists bajo raices permitidas. |
 | `POST` | `/api/passwords/identify` | Si | Identificacion de formato probable de hash con hashID y heuristicas. |
@@ -374,6 +386,59 @@ Peticion URL:
 ```
 
 `allowPrivateNetworks` debe usarse solo en laboratorios locales autorizados. Si esta a `false`, el backend bloquea destinos privados, loopback, link-local y rangos internos para reducir riesgo SSRF.
+
+## OSINT y exposicion autorizada
+
+Las herramientas OSINT se dividen en jobs persistentes y consultas server-side
+rapidas:
+
+- Jobs persistentes: `Sherlock`, `Maigret`, `Social Analyzer`, `Holehe`,
+  `theHarvester` y `git-dumper`, guardados en `tool_execution_jobs`.
+- Consultas server-side: `Email Exposure`, `Phone Lookup`, `Domain Contacts`,
+  `Password Exposure`, `Metadata Exposure` y `Public Files`.
+
+Todas las consultas de exposicion requieren JWT y el campo `authorized=true`.
+La intencion es validar exposicion propia, corporativa o expresamente consentida.
+No hay endpoints para descubrir domicilios privados ni para atribuir datos
+sensibles de terceros.
+
+`git-dumper` requiere `authorized=true`, normaliza URLs HTTP/HTTPS, puede anadir
+`/.git/` si la vista lo solicita y escribe siempre en
+`CALIGO_GIT_DUMPER_OUTPUT_DIR`; el usuario no puede escoger rutas arbitrarias.
+La respuesta del job resume `outputDir`, recuento de ficheros, tamano total,
+metadatos `.git` detectados y muestra de logs/stdout/stderr.
+
+Ejemplo `Email Exposure`:
+
+```json
+{
+  "email": "persona@empresa.com",
+  "fullName": "Persona Autorizada",
+  "domain": "empresa.com",
+  "generateCandidates": true,
+  "authorized": true
+}
+```
+
+Ejemplo `Domain Contacts`:
+
+```json
+{
+  "domain": "empresa.com",
+  "paths": ["/.well-known/security.txt", "/contacto", "/legal"],
+  "timeoutSeconds": 12,
+  "authorized": true
+}
+```
+
+`Password Exposure` usa la API range de Pwned Passwords: Caligo calcula SHA-1 en
+el backend y solo envia el prefijo de 5 caracteres al proveedor. El valor de la
+password no se guarda en tablas ni en logs de auditoria; se audita unicamente el
+prefijo.
+
+La consulta de brechas por email dependiente de API key de pago queda fuera del
+producto. Para exposicion de cuentas se priorizan fuentes locales, Holehe,
+theHarvester y validaciones de dominio sin depender de proveedores cerrados.
 
 ## Reconocimiento activo
 

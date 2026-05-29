@@ -64,6 +64,7 @@ public class ServerToolUpdateService {
             pythonTool("social-analyzer", "social-analyzer", "Social Analyzer", "OSINT", "Correlacion de nombres y aliases contra perfiles de redes sociales.", "/opt/caligo-pipx/venvs/social-analyzer/bin/python -c 'import importlib.metadata as m; print(m.version(\"social-analyzer\"))'"),
             pythonTool("holehe", "holehe", "Holehe", "OSINT", "Comprobacion de uso publico de emails en servicios online.", "/opt/caligo-pipx/venvs/holehe/bin/python -c 'import importlib.metadata as m; print(m.version(\"holehe\"))'"),
             pythonTool("theharvester", "theHarvester", "theHarvester", "OSINT", "Recoleccion de emails, hosts y fuentes publicas por dominio.", "cd /opt/theHarvester && uv run python -c 'import importlib.metadata as m; print(m.version(\"theharvester\"))'"),
+            pythonTool("git-dumper", "git-dumper", "git-dumper", "OSINT", "Recuperacion controlada de repositorios .git expuestos en entornos autorizados.", "git-dumper --help"),
             aptTool("wireguard", "wg", "WireGuard", "Redes", "Tuneles WireGuard para salida controlada del servidor Caligo.", "wg --version", "wireguard-tools"),
             aptTool("openvpn", "openvpn", "OpenVPN", "Redes", "Cliente OpenVPN para perfiles de proveedores o laboratorios privados.", "openvpn --version", "openvpn"),
             aptTool("resolvconf", "resolvconf", "resolvconf", "Redes", "Gestion de DNS para clientes VPN cuando el perfil lo requiere.", "resolvconf --version", "resolvconf"),

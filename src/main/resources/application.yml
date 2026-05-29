@@ -85,6 +85,9 @@ caligo:
       binary: ${CALIGO_HOLEHE_BINARY:holehe}
     theharvester:
       binary: ${CALIGO_THEHARVESTER_BINARY:theHarvester}
+    git-dumper:
+      binary: ${CALIGO_GIT_DUMPER_BINARY:git-dumper}
+      output-dir: ${CALIGO_GIT_DUMPER_OUTPUT_DIR:/tmp/caligo/git-dumper}
   passwords:
     allow-external-targets: ${CALIGO_PASSWORDS_ALLOW_EXTERNAL_TARGETS:false}
     max-output-bytes: ${CALIGO_PASSWORDS_MAX_OUTPUT_BYTES:1048576}
