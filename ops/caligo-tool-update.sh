@@ -165,6 +165,9 @@ case "$tool" in
   theharvester)
     theharvester_update
     ;;
+  git-dumper)
+    python_tool_update git-dumper git-dumper
+    ;;
   wireguard)
     apt_update wireguard-tools
     ;;
