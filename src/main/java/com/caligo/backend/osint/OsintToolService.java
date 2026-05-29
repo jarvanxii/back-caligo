@@ -310,7 +310,14 @@ public class OsintToolService {
         requireCommand(holeheBinary, "Holehe");
         String target = text(request.email()).toLowerCase(Locale.ROOT);
         int timeout = clamp(value(request.timeoutSeconds(), 45), 5, 120);
-        List<String> command = new ArrayList<>(List.of(holeheBinary, target, "--no-color"));
+        List<String> command = new ArrayList<>(List.of(
+                holeheBinary,
+                target,
+                "--no-color",
+                "--no-clear",
+                "-T",
+                String.valueOf(timeout)
+        ));
         if (Boolean.TRUE.equals(request.onlyUsed())) {
             command.add("--only-used");
         }
@@ -330,7 +337,8 @@ public class OsintToolService {
                 "-b",
                 String.join(",", sources),
                 "-l",
-                String.valueOf(limit)
+                String.valueOf(limit),
+                "-q"
         ));
         return startJob(username, remoteIp, "theharvester", target, storedParameters(request), command, timeout + 30, this::parseTheHarvester);
     }
@@ -366,12 +374,8 @@ public class OsintToolService {
             command.add(proxy);
         }
         for (String header : headers) {
-            command.add("--header");
-            command.add(header);
-        }
-        for (String branch : branches) {
-            command.add("--branch");
-            command.add(branch);
+            command.add("-H");
+            command.add(header.replaceFirst(":\\s*", "="));
         }
         command.add(targetUri.toString());
         command.add(outputDir.toString());
@@ -379,6 +383,7 @@ public class OsintToolService {
         Map<String, Object> parameters = storedParameters(request);
         parameters.put("normalizedUrl", targetUri.toString());
         parameters.put("outputDir", outputDir.toString());
+        parameters.put("branchesIgnored", branches);
         return startJob(username, remoteIp, "git-dumper", targetUri.toString(), parameters, command, cliTimeout + 120, (stdout, stderr, exitCode) -> parseGitDumper(stdout, stderr, exitCode, outputDir));
     }
 
@@ -1221,8 +1226,13 @@ public class OsintToolService {
             if (appendGitPath && !path.toLowerCase(Locale.ROOT).contains("/.git")) {
                 path = path.replaceAll("/+$", "") + "/.git/";
             }
+            int port = uri.getPort();
+            if (port > 65535) {
+                throw new IllegalArgumentException("port");
+            }
+            String authority = host + (port > 0 ? ":" + port : "");
             String query = hasText(uri.getRawQuery()) ? "?" + uri.getRawQuery() : "";
-            return URI.create(scheme + "://" + host + path + query);
+            return URI.create(scheme + "://" + authority + path + query);
         } catch (Exception ex) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "URL de repositorio .git no valida");
         }
