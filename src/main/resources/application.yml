@@ -32,7 +32,7 @@ caligo:
     login-response-delay-millis: ${CALIGO_LOGIN_RESPONSE_DELAY_MILLIS:2000}
     jwt:
       secret: ${CALIGO_JWT_SECRET:caligo-local-development-secret-change-this-value-before-deploying}
-      expiration-minutes: ${CALIGO_JWT_EXPIRATION_MINUTES:60}
+      expiration-minutes: ${CALIGO_JWT_EXPIRATION_MINUTES:480}
   bootstrap:
     admin:
       username: ${CALIGO_BOOTSTRAP_ADMIN_USER:admin}

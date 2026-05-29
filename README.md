@@ -110,7 +110,7 @@ http://localhost:8080
 | `CALIGO_DB_PASSWORD` | vacio | Password de base de datos. Debe venir de entorno. |
 | `CALIGO_LOGIN_RESPONSE_DELAY_MILLIS` | `2000` | Retraso fijo aplicado a cada intento de login para reducir fuerza bruta. |
 | `CALIGO_JWT_SECRET` | secreto local inseguro | Firma HMAC de JWT. Cambiar fuera de local. |
-| `CALIGO_JWT_EXPIRATION_MINUTES` | `60` | Duracion del token. |
+| `CALIGO_JWT_EXPIRATION_MINUTES` | `480` | Duracion del token en minutos. 480 equivale a 8 horas. |
 | `CALIGO_BOOTSTRAP_ADMIN_USER` | `admin` | Admin inicial si no hay usuarios. |
 | `CALIGO_BOOTSTRAP_ADMIN_EMAIL` | `admin@caligo.local` | Email admin inicial. |
 | `CALIGO_BOOTSTRAP_ADMIN_PASSWORD` | `change-me-now` | Password admin local. |
