@@ -79,6 +79,27 @@ WRAPPER
   chmod 0755 /usr/local/bin/theHarvester
 }
 
+spiderfoot_update() {
+  local repo="/opt/spiderfoot"
+  apt-get update
+  apt-get install -y git python3 python3-pip python3-venv
+  if [ -d "${repo}/.git" ]; then
+    git -C "$repo" pull --ff-only
+  else
+    rm -rf "$repo"
+    git clone https://github.com/smicallef/spiderfoot.git "$repo"
+  fi
+  python3 -m venv "${repo}/.venv"
+  "${repo}/.venv/bin/pip" install --upgrade pip wheel
+  "${repo}/.venv/bin/pip" install -r "${repo}/requirements.txt"
+  cat >/usr/local/bin/spiderfoot <<'WRAPPER'
+#!/usr/bin/env bash
+cd /opt/spiderfoot
+exec /opt/spiderfoot/.venv/bin/python /opt/spiderfoot/sf.py "$@"
+WRAPPER
+  chmod 0755 /usr/local/bin/spiderfoot
+}
+
 case "$tool" in
   nmap)
     apt_update nmap
@@ -167,6 +188,12 @@ case "$tool" in
     ;;
   git-dumper)
     python_tool_update git-dumper git-dumper
+    ;;
+  spiderfoot)
+    spiderfoot_update
+    ;;
+  trufflehog)
+    go_update github.com/trufflesecurity/trufflehog/v3 trufflehog
     ;;
   wireguard)
     apt_update wireguard-tools

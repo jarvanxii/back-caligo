@@ -2,7 +2,7 @@
 
 Backend Spring Boot de Caligo. Expone una API REST con JWT, Flyway y MariaDB para ejecutar herramientas de laboratorio de ciberseguridad en entornos controlados.
 
-Los modulos funcionales actuales son **URLs**, **Reconocimiento activo**, **OSINT**, **Metasploit**, **Fuerza bruta controlada** y **Contrasenas**. URLs cubre DNS, inspeccion URL, HTTP, TLS, reputacion, historial, archivos publicos, endpoints pasivos e inventario de herramientas locales. Reconocimiento activo cubre jobs de **Nmap** y adaptador **OpenVAS/GVM** con JWT, auditoria, validacion de alcance y progreso. OSINT integra **Caligo People**, **Sherlock**, **Maigret**, **Social Analyzer**, **Holehe**, **theHarvester**, **git-dumper** y utilidades de exposicion autorizada para emails, telefonos aportados, contactos de dominio, passwords y documentos publicos. Metasploit expone RPC local para discovery asistido, recomendaciones de modulos, ejecucion controlada y gestion de sesiones de laboratorio. Fuerza bruta integra **Hydra** con alcance privado/local, fuentes de credenciales del servidor y trazas redaccionadas. Contrasenas integra **John the Ripper**, **Hashcat**, **hashID**, **Crunch**, **CeWL** y wordlists permitidas del servidor.
+Los modulos funcionales actuales son **URLs**, **Reconocimiento activo**, **OSINT**, **Metasploit**, **Fuerza bruta controlada** y **Contrasenas**. URLs cubre DNS, inspeccion URL, HTTP, TLS, reputacion, historial, archivos publicos, endpoints pasivos e inventario de herramientas locales. Reconocimiento activo cubre jobs de **Nmap** y adaptador **OpenVAS/GVM** con JWT, auditoria, validacion de alcance y progreso. OSINT integra **Caligo People**, **Sherlock**, **Maigret**, **Social Analyzer**, **Holehe**, **theHarvester**, **git-dumper**, **SpiderFoot**, **TruffleHog** y utilidades de exposicion autorizada para emails, telefonos aportados, contactos de dominio, passwords y documentos publicos. Metasploit expone RPC local para discovery asistido, recomendaciones de modulos, ejecucion controlada y gestion de sesiones de laboratorio. Fuerza bruta integra **Hydra** con alcance privado/local, fuentes de credenciales del servidor y trazas redaccionadas. Contrasenas integra **John the Ripper**, **Hashcat**, **hashID**, **Crunch**, **CeWL** y wordlists permitidas del servidor.
 El panel de sistema expone inventario versionado de herramientas instaladas y actualizaciones controladas por allowlist.
 
 ## Stack
@@ -22,7 +22,7 @@ El panel de sistema expone inventario versionado de herramientas instaladas y ac
 - Nmap CLI en el servidor.
 - Greenbone/OpenVAS via `gvm-cli` cuando GVM esta inicializado.
 - Metasploit Framework via MessagePack RPC (`msgrpc`) escuchando solo en localhost.
-- Sherlock, Maigret, Social Analyzer, Holehe, theHarvester y git-dumper instalados en el servidor para OSINT.
+- Sherlock, Maigret, Social Analyzer, Holehe, theHarvester, git-dumper, SpiderFoot y TruffleHog instalados en el servidor para OSINT.
 - Endpoints OSINT server-side para Email Exposure, Phone Lookup, Domain Contacts, Password Exposure, Metadata Exposure y Public Files.
 - Pwned Passwords se consulta con k-anonimato y no requiere API key.
 - Hydra CLI para simulaciones de fuerza bruta en laboratorio.
@@ -152,6 +152,10 @@ http://localhost:8080
 | `CALIGO_GIT_DUMPER_BINARY` | `git-dumper` | Binario git-dumper. |
 | `CALIGO_GIT_DUMPER_OUTPUT_DIR` | `/tmp/caligo/git-dumper` | Directorio controlado para artefactos recuperados por git-dumper. |
 | `CALIGO_THEHARVESTER_BINARY` | `theHarvester` | Binario theHarvester. |
+| `CALIGO_SPIDERFOOT_BINARY` | `spiderfoot` | Wrapper o binario SpiderFoot usado por los jobs OSINT. |
+| `CALIGO_TRUFFLEHOG_BINARY` | `trufflehog` | Binario TruffleHog v3. |
+| `CALIGO_TRUFFLEHOG_ALLOWED_ROOTS` | `/tmp/caligo/git-dumper,/var/www/caligo,/opt/caligo` | Raices locales permitidas para escaneos `filesystem` o `file://`. |
+| `CALIGO_OSINT_TEMP_DIR` | `/tmp/caligo/osint` | Directorio temporal para filtros include/exclude de TruffleHog. |
 | `CALIGO_PASSWORDS_ALLOW_EXTERNAL_TARGETS` | `false` | Si `false`, CeWL solo acepta URLs privadas/locales. |
 | `CALIGO_PASSWORDS_MAX_OUTPUT_BYTES` | `1048576` | Limite de salida capturada por John, Hashcat, Crunch y CeWL. |
 | `CALIGO_PASSWORDS_TIMEOUT_SECONDS` | `1800` | Timeout maximo por job de contrasenas. |
@@ -198,7 +202,7 @@ Catalogo de modulos visibles desde el frontend.
 | `enabled` | `boolean` | Control de visibilidad. |
 | `created_at` | `datetime(6)` | Alta. |
 
-Modulos iniciales: `urls`, `nmap`, `openvas`, `metasploit`, `bruteforce`, `nuclei`, `searchsploit`, `nikto`, `sqlmap`, `osint-profile-search`, `sherlock`, `maigret`, `social-analyzer`, `holehe`, `theharvester`, `git-dumper`, `passwords`, `encoding`, `steganography`.
+Modulos iniciales: `urls`, `nmap`, `openvas`, `metasploit`, `bruteforce`, `nuclei`, `searchsploit`, `nikto`, `sqlmap`, `osint-profile-search`, `sherlock`, `maigret`, `social-analyzer`, `holehe`, `theharvester`, `git-dumper`, `spiderfoot`, `trufflehog`, `passwords`, `encoding`, `steganography`.
 
 ### `audit_events`
 
@@ -240,7 +244,7 @@ Historial y trazabilidad de herramientas activas.
 | --- | --- | --- |
 | `id` | `char(36)` | UUID primario del job. |
 | `username` | `varchar(80)` | Usuario que lanza la herramienta. |
-| `tool` | `varchar(40)` | `nmap`, `openvas`, `metasploit`, `hydra`, `nuclei`, `nikto`, `sqlmap`, `sherlock`, `maigret`, `social-analyzer`, `holehe`, `theharvester`, `john`, `hashcat`, `crunch` o `cewl`. |
+| `tool` | `varchar(40)` | `nmap`, `openvas`, `metasploit`, `hydra`, `nuclei`, `nikto`, `sqlmap`, `sherlock`, `maigret`, `social-analyzer`, `holehe`, `theharvester`, `git-dumper`, `spiderfoot`, `trufflehog`, `john`, `hashcat`, `crunch` o `cewl`. |
 | `target` | `varchar(240)` | Objetivo validado. |
 | `status` | `varchar(30)` | `QUEUED`, `RUNNING`, `COMPLETED`, `FAILED`, `CANCELLED`. |
 | `progress` | `integer` | Progreso 0-100. |
@@ -333,7 +337,7 @@ Invoke-RestMethod `
 | `GET` | `/api/vulnerabilities/{tool}/runs` | Si | Ultimos jobs de `nuclei`, `nikto` o `sqlmap`. |
 | `GET` | `/api/vulnerabilities/{tool}/runs/{id}` | Si | Estado, progreso, logs y hallazgos normalizados. |
 | `GET/POST` | `/api/vulnerabilities/searchsploit/search` | Si | Consulta local Exploit-DB por texto o CVE sin tocar el objetivo. |
-| `GET` | `/api/osint/capabilities` | Si | Estado de Caligo People, Sherlock, Maigret, Social Analyzer, Holehe y theHarvester. |
+| `GET` | `/api/osint/capabilities` | Si | Estado de Caligo People, Sherlock, Maigret, Social Analyzer, Holehe, theHarvester, git-dumper, SpiderFoot y TruffleHog. |
 | `POST` | `/api/osint/profile-search/search` | Si | Busca candidatos publicos por nombre real en LinkedIn y redes indexadas. |
 | `POST` | `/api/osint/sherlock/runs` | Si | Crea job Sherlock por username. |
 | `POST` | `/api/osint/maigret/runs` | Si | Crea job Maigret por username. |
@@ -341,6 +345,8 @@ Invoke-RestMethod `
 | `POST` | `/api/osint/holehe/runs` | Si | Crea job Holehe por email. |
 | `POST` | `/api/osint/theharvester/runs` | Si | Crea job theHarvester por dominio. |
 | `POST` | `/api/osint/git-dumper/runs` | Si | Crea job git-dumper contra un `.git` expuesto en alcance autorizado. |
+| `POST` | `/api/osint/spiderfoot/runs` | Si | Crea job SpiderFoot con target, perfil, modulos y eventos acotados. |
+| `POST` | `/api/osint/trufflehog/runs` | Si | Crea job TruffleHog contra Git, GitHub o rutas locales permitidas. |
 | `GET` | `/api/osint/{tool}/runs` | Si | Ultimos jobs OSINT del usuario. |
 | `GET` | `/api/osint/{tool}/runs/{id}` | Si | Estado, progreso, logs y resultados normalizados. |
 | `GET` | `/api/osint/exposure/capabilities` | Si | Capacidades de utilidades OSINT server-side de exposicion autorizada. |
@@ -393,7 +399,8 @@ Las herramientas OSINT se dividen en jobs persistentes y consultas server-side
 rapidas:
 
 - Jobs persistentes: `Sherlock`, `Maigret`, `Social Analyzer`, `Holehe`,
-  `theHarvester` y `git-dumper`, guardados en `tool_execution_jobs`.
+  `theHarvester`, `git-dumper`, `SpiderFoot` y `TruffleHog`, guardados en
+  `tool_execution_jobs`.
 - Consultas server-side: `Email Exposure`, `Phone Lookup`, `Domain Contacts`,
   `Password Exposure`, `Metadata Exposure` y `Public Files`.
 
@@ -407,6 +414,19 @@ sensibles de terceros.
 `CALIGO_GIT_DUMPER_OUTPUT_DIR`; el usuario no puede escoger rutas arbitrarias.
 La respuesta del job resume `outputDir`, recuento de ficheros, tamano total,
 metadatos `.git` detectados y muestra de logs/stdout/stderr.
+
+`SpiderFoot` requiere `authorized=true` y acepta `target`, `targetType`,
+`scanProfile`, `modules`, `eventTypes`, `strictMode` y `timeoutSeconds`. El
+backend solo permite nombres de modulo/evento seguros, aplica presets cuando no
+se seleccionan modulos explicitos y devuelve hallazgos normalizados por tipo,
+modulo, valor, URL y score.
+
+`TruffleHog` requiere `authorized=true` y acepta `sourceType` (`git`, `github`
+o `filesystem`), `target`, `results`, `branch`, `maxDepth`, `concurrency`,
+`includePaths`, `excludePaths`, `noVerification`, `filterEntropy`,
+`scanEntireChunk` y `timeoutSeconds`. Los targets locales solo pueden estar
+dentro de `CALIGO_TRUFFLEHOG_ALLOWED_ROOTS`, y los secretos devueltos se
+redactan antes de guardarse.
 
 Ejemplo `Email Exposure`:
 

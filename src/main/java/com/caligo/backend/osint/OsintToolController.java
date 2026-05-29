@@ -92,6 +92,24 @@ public class OsintToolController {
         return osintToolService.startGitDumper(request, authentication.getName(), remoteIp(servletRequest));
     }
 
+    @PostMapping("/spiderfoot/runs")
+    public Map<String, Object> startSpiderFoot(
+            @Valid @RequestBody SpiderFootRequest request,
+            Authentication authentication,
+            HttpServletRequest servletRequest
+    ) {
+        return osintToolService.startSpiderFoot(request, authentication.getName(), remoteIp(servletRequest));
+    }
+
+    @PostMapping("/trufflehog/runs")
+    public Map<String, Object> startTruffleHog(
+            @Valid @RequestBody TruffleHogRequest request,
+            Authentication authentication,
+            HttpServletRequest servletRequest
+    ) {
+        return osintToolService.startTruffleHog(request, authentication.getName(), remoteIp(servletRequest));
+    }
+
     @GetMapping("/{tool}/runs")
     public List<Map<String, Object>> runs(@PathVariable String tool, Authentication authentication) {
         return osintToolService.recentJobs(tool, authentication.getName());

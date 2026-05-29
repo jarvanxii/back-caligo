@@ -65,6 +65,8 @@ public class ServerToolUpdateService {
             pythonTool("holehe", "holehe", "Holehe", "OSINT", "Comprobacion de uso publico de emails en servicios online.", "/opt/caligo-pipx/venvs/holehe/bin/python -c 'import importlib.metadata as m; print(m.version(\"holehe\"))'"),
             pythonTool("theharvester", "theHarvester", "theHarvester", "OSINT", "Recoleccion de emails, hosts y fuentes publicas por dominio.", "cd /opt/theHarvester && uv run python -c 'import importlib.metadata as m; print(m.version(\"theharvester\"))'"),
             pythonTool("git-dumper", "git-dumper", "git-dumper", "OSINT", "Recuperacion controlada de repositorios .git expuestos en entornos autorizados.", "git-dumper --help"),
+            gitTool("spiderfoot", "spiderfoot", "SpiderFoot", "OSINT", "Correlacion OSINT multi-fuente con modulos configurables.", "spiderfoot --version 2>/dev/null || spiderfoot -h | head -n 1", "/opt/spiderfoot"),
+            goTool("trufflehog", "trufflehog", "TruffleHog", "OSINT", "Deteccion de secretos en repositorios, directorios e historicos autorizados.", "trufflehog --version", "github.com/trufflesecurity/trufflehog/v3"),
             aptTool("wireguard", "wg", "WireGuard", "Redes", "Tuneles WireGuard para salida controlada del servidor Caligo.", "wg --version", "wireguard-tools"),
             aptTool("openvpn", "openvpn", "OpenVPN", "Redes", "Cliente OpenVPN para perfiles de proveedores o laboratorios privados.", "openvpn --version", "openvpn"),
             aptTool("resolvconf", "resolvconf", "resolvconf", "Redes", "Gestion de DNS para clientes VPN cuando el perfil lo requiere.", "resolvconf --version", "resolvconf"),

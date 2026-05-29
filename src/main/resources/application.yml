@@ -88,6 +88,12 @@ caligo:
     git-dumper:
       binary: ${CALIGO_GIT_DUMPER_BINARY:git-dumper}
       output-dir: ${CALIGO_GIT_DUMPER_OUTPUT_DIR:/tmp/caligo/git-dumper}
+    spiderfoot:
+      binary: ${CALIGO_SPIDERFOOT_BINARY:spiderfoot}
+    trufflehog:
+      binary: ${CALIGO_TRUFFLEHOG_BINARY:trufflehog}
+      allowed-roots: ${CALIGO_TRUFFLEHOG_ALLOWED_ROOTS:/tmp/caligo/git-dumper,/var/www/caligo,/opt/caligo}
+    temp-dir: ${CALIGO_OSINT_TEMP_DIR:/tmp/caligo/osint}
   passwords:
     allow-external-targets: ${CALIGO_PASSWORDS_ALLOW_EXTERNAL_TARGETS:false}
     max-output-bytes: ${CALIGO_PASSWORDS_MAX_OUTPUT_BYTES:1048576}

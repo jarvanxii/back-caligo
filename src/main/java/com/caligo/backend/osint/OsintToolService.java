@@ -60,10 +60,31 @@ public class OsintToolService {
     private static final Pattern SAFE_SOURCE = Pattern.compile("^[a-zA-Z0-9_-]{2,40}$");
     private static final Pattern SAFE_HEADER = Pattern.compile("^[A-Za-z0-9-]{2,48}:\\s?[^\\r\\n]{1,130}$");
     private static final Pattern SAFE_BRANCH = Pattern.compile("^[A-Za-z0-9._/\\-]{1,90}$");
+    private static final Pattern SAFE_MODULE = Pattern.compile("^[A-Za-z0-9_.-]{2,80}$");
+    private static final Pattern SAFE_EVENT_TYPE = Pattern.compile("^[A-Z0-9_]{2,80}$");
+    private static final Pattern SAFE_PATH_FILTER = Pattern.compile("^[A-Za-z0-9._~!$&'()*+,;=:@%/\\\\\\-]{1,180}$");
     private static final Pattern EMAIL_PATTERN = Pattern.compile("[A-Za-z0-9._%+\\-]+@[A-Za-z0-9.\\-]+\\.[A-Za-z]{2,24}");
     private static final Pattern URL_PATTERN = Pattern.compile("https?://[^\\s\"'<>\\])}]+", Pattern.CASE_INSENSITIVE);
     private static final Pattern HOST_PATTERN = Pattern.compile("(?i)\\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,30}\\b");
-    private static final Set<String> JOB_TOOLS = Set.of("sherlock", "maigret", "social-analyzer", "holehe", "theharvester", "git-dumper");
+    private static final Set<String> JOB_TOOLS = Set.of("sherlock", "maigret", "social-analyzer", "holehe", "theharvester", "git-dumper", "spiderfoot", "trufflehog");
+    private static final Set<String> SPIDERFOOT_PROFILES = Set.of("passive", "footprint", "investigate", "all", "custom");
+    private static final Set<String> SPIDERFOOT_TARGET_TYPES = Set.of("auto", "domain", "ip", "netblock", "email", "username", "name", "phone");
+    private static final Map<String, List<String>> SPIDERFOOT_MODULE_PRESETS = Map.of(
+            "passive", List.of("sfp_dnsresolve", "sfp_whois", "sfp_crtsh", "sfp_arin", "sfp_bingsearch"),
+            "footprint", List.of("sfp_dnsresolve", "sfp_whois", "sfp_crtsh", "sfp_dnsbrute", "sfp_bingsearch", "sfp_social"),
+            "investigate", List.of("sfp_dnsresolve", "sfp_whois", "sfp_crtsh", "sfp_email", "sfp_pgp", "sfp_social")
+    );
+    private static final Map<String, String> SPIDERFOOT_EVENT_PRESETS = Map.of(
+            "domain", "DOMAIN_NAME",
+            "ip", "IP_ADDRESS",
+            "netblock", "NETBLOCK_OWNER",
+            "email", "EMAILADDR",
+            "username", "USERNAME",
+            "name", "HUMAN_NAME",
+            "phone", "PHONE_NUMBER"
+    );
+    private static final Set<String> TRUFFLEHOG_SOURCE_TYPES = Set.of("git", "github", "filesystem");
+    private static final Set<String> TRUFFLEHOG_RESULTS = Set.of("verified", "unknown", "unverified", "verified,unknown", "verified,unknown,unverified", "all");
     private static final Map<String, String> PROFILE_SITES = Map.ofEntries(
             Map.entry("linkedin", "linkedin.com/in"),
             Map.entry("github", "github.com"),
@@ -89,7 +110,11 @@ public class OsintToolService {
     private final String holeheBinary;
     private final String theHarvesterBinary;
     private final String gitDumperBinary;
+    private final String spiderFootBinary;
+    private final String truffleHogBinary;
     private final Path gitDumperOutputRoot;
+    private final Path osintTempRoot;
+    private final List<Path> truffleHogAllowedRoots;
     private final int maxOutputBytes;
     private final long defaultTimeoutSeconds;
 
@@ -104,6 +129,10 @@ public class OsintToolService {
             @Value("${caligo.osint.theharvester.binary:theHarvester}") String theHarvesterBinary,
             @Value("${caligo.osint.git-dumper.binary:git-dumper}") String gitDumperBinary,
             @Value("${caligo.osint.git-dumper.output-dir:/tmp/caligo/git-dumper}") String gitDumperOutputRoot,
+            @Value("${caligo.osint.spiderfoot.binary:spiderfoot}") String spiderFootBinary,
+            @Value("${caligo.osint.trufflehog.binary:trufflehog}") String truffleHogBinary,
+            @Value("${caligo.osint.trufflehog.allowed-roots:/tmp/caligo/git-dumper,/var/www/caligo,/opt/caligo}") String truffleHogAllowedRoots,
+            @Value("${caligo.osint.temp-dir:/tmp/caligo/osint}") String osintTempRoot,
             @Value("${caligo.osint.max-output-bytes:1048576}") int maxOutputBytes,
             @Value("${caligo.osint.timeout-seconds:600}") long defaultTimeoutSeconds
     ) {
@@ -116,7 +145,15 @@ public class OsintToolService {
         this.holeheBinary = holeheBinary;
         this.theHarvesterBinary = theHarvesterBinary;
         this.gitDumperBinary = gitDumperBinary;
+        this.spiderFootBinary = spiderFootBinary;
+        this.truffleHogBinary = truffleHogBinary;
         this.gitDumperOutputRoot = Path.of(gitDumperOutputRoot).toAbsolutePath().normalize();
+        this.osintTempRoot = Path.of(osintTempRoot).toAbsolutePath().normalize();
+        this.truffleHogAllowedRoots = Stream.of(truffleHogAllowedRoots.split(","))
+                .map(String::trim)
+                .filter(OsintToolService::hasText)
+                .map(value -> Path.of(value).toAbsolutePath().normalize())
+                .toList();
         this.maxOutputBytes = maxOutputBytes;
         this.defaultTimeoutSeconds = defaultTimeoutSeconds;
         this.httpClient = HttpClient.newBuilder()
@@ -152,6 +189,8 @@ public class OsintToolService {
                 toolCapability("holehe", "Holehe", holeheBinary, "/opt/caligo-pipx/venvs/holehe/bin/python -c 'import importlib.metadata as m; print(m.version(\"holehe\"))'", "Comprobacion de uso de email en servicios publicos."),
                 toolCapability("theharvester", "theHarvester", theHarvesterBinary, "cd /opt/theHarvester && uv run python -c 'import importlib.metadata as m; print(m.version(\"theharvester\"))'", "Recoleccion de emails, hosts y fuentes publicas por dominio."),
                 toolCapability("git-dumper", "git-dumper", gitDumperBinary, "git-dumper --help | head -n 1", "Recuperacion controlada de repositorios .git expuestos."),
+                toolCapability("spiderfoot", "SpiderFoot", spiderFootBinary, "spiderfoot --version 2>/dev/null || spiderfoot -h | head -n 1", "Correlacion OSINT multi-fuente con perfiles y modulos configurables."),
+                toolCapability("trufflehog", "TruffleHog", truffleHogBinary, "trufflehog --version", "Deteccion de secretos en repositorios, directorios y artefactos autorizados."),
                 Map.of("id", "email-exposure", "label", "Email Exposure", "binary", "backend-http", "available", true, "version", "server-side", "description", "Analisis seguro de email, dominio, MX y patrones profesionales."),
                 Map.of("id", "phone-lookup", "label", "Phone Lookup", "binary", "backend-http", "available", true, "version", "server-side", "description", "Normalizacion y validacion del telefono aportado por el usuario."),
                 Map.of("id", "domain-contacts", "label", "Domain Contacts", "binary", "backend-http", "available", true, "version", "server-side", "description", "Extraccion de contactos publicados por dominios autorizados."),
@@ -164,7 +203,11 @@ public class OsintToolService {
                 "platforms", List.of("linkedin", "github", "x", "instagram", "facebook", "tiktok"),
                 "timeoutSeconds", 45,
                 "topSites", 250,
-                "domainSources", List.of("duckduckgo", "bing", "yahoo", "crtsh")
+                "domainSources", List.of("duckduckgo", "bing", "yahoo", "crtsh"),
+                "spiderFootProfiles", SPIDERFOOT_PROFILES.stream().sorted().toList(),
+                "spiderFootModules", SPIDERFOOT_MODULE_PRESETS,
+                "truffleHogSourceTypes", TRUFFLEHOG_SOURCE_TYPES.stream().sorted().toList(),
+                "truffleHogResults", TRUFFLEHOG_RESULTS.stream().sorted().toList()
         ));
         return response;
     }
@@ -337,6 +380,103 @@ public class OsintToolService {
         parameters.put("normalizedUrl", targetUri.toString());
         parameters.put("outputDir", outputDir.toString());
         return startJob(username, remoteIp, "git-dumper", targetUri.toString(), parameters, command, cliTimeout + 120, (stdout, stderr, exitCode) -> parseGitDumper(stdout, stderr, exitCode, outputDir));
+    }
+
+    public Map<String, Object> startSpiderFoot(SpiderFootRequest request, String username, String remoteIp) {
+        requireAuthorized(request.authorized(), "Confirma alcance autorizado antes de ejecutar SpiderFoot.");
+        requireCommand(spiderFootBinary, "SpiderFoot");
+        String target = sanitizeSpiderFootTarget(request.target(), request.targetType());
+        String targetType = sanitizeSpiderFootTargetType(request.targetType(), target);
+        String profile = sanitizeSpiderFootProfile(request.scanProfile());
+        List<String> modules = sanitizeSpiderFootModules(request.modules(), profile);
+        List<String> eventTypes = sanitizeSpiderFootEventTypes(request.eventTypes(), targetType);
+        int timeout = clamp(value(request.timeoutSeconds(), 900), 60, 3600);
+
+        List<String> command = new ArrayList<>(List.of(
+                spiderFootBinary,
+                "-s",
+                target,
+                "-q",
+                "-o",
+                "json"
+        ));
+        if (!eventTypes.isEmpty()) {
+            command.add("-t");
+            command.add(String.join(",", eventTypes));
+        }
+        if (!modules.isEmpty()) {
+            command.add("-m");
+            command.add(String.join(",", modules));
+        } else if (!"custom".equals(profile)) {
+            command.add("-u");
+            command.add(profile);
+        }
+        if (Boolean.TRUE.equals(request.strictMode())) {
+            command.add("-x");
+        }
+
+        Map<String, Object> parameters = storedParameters(request);
+        parameters.put("normalizedTarget", target);
+        parameters.put("targetType", targetType);
+        parameters.put("modules", modules);
+        parameters.put("eventTypes", eventTypes);
+        auditEvents.save(new AuditEvent(username, "OSINT_SPIDERFOOT_START", target, remoteIp));
+        return startJob(username, remoteIp, "spiderfoot", target, parameters, command, timeout + 60, this::parseSpiderFoot);
+    }
+
+    public Map<String, Object> startTruffleHog(TruffleHogRequest request, String username, String remoteIp) {
+        requireAuthorized(request.authorized(), "Confirma alcance autorizado antes de ejecutar TruffleHog.");
+        requireCommand(truffleHogBinary, "TruffleHog");
+        String sourceType = sanitizeTruffleHogSourceType(request.sourceType());
+        String target = sanitizeTruffleHogTarget(sourceType, request.target());
+        String results = sanitizeTruffleHogResults(request.results());
+        int timeout = clamp(value(request.timeoutSeconds(), 900), 30, 3600);
+        int concurrency = clamp(value(request.concurrency(), 8), 1, 64);
+
+        List<String> command = new ArrayList<>(List.of(
+                truffleHogBinary,
+                sourceType
+        ));
+        if ("github".equals(sourceType)) {
+            command.add("--repo");
+            command.add(target);
+        } else {
+            command.add(target);
+        }
+        command.add("--json");
+        command.add("--no-update");
+        command.add("--concurrency");
+        command.add(String.valueOf(concurrency));
+        command.add("--results=" + results);
+        if (Boolean.TRUE.equals(request.noVerification())) {
+            command.add("--no-verification");
+        }
+        if (Boolean.TRUE.equals(request.filterEntropy())) {
+            command.add("--filter-entropy=3.0");
+        }
+        if (Boolean.TRUE.equals(request.scanEntireChunk())) {
+            command.add("--scan-entire-chunk");
+        }
+        if (Set.of("git", "github").contains(sourceType)) {
+            String branch = sanitizeBranch(request.branch());
+            if (hasText(branch)) {
+                command.add("--branch");
+                command.add(branch);
+            }
+            Integer maxDepth = request.maxDepth();
+            if (maxDepth != null) {
+                command.add("--max-depth");
+                command.add(String.valueOf(clamp(maxDepth, 1, 5000)));
+            }
+        }
+        addPathFilterFile(command, "--include-paths", request.includePaths(), username, "include");
+        addPathFilterFile(command, "--exclude-paths", request.excludePaths(), username, "exclude");
+
+        Map<String, Object> parameters = storedParameters(request);
+        parameters.put("sourceType", sourceType);
+        parameters.put("normalizedTarget", target);
+        parameters.put("results", results);
+        return startJob(username, remoteIp, "trufflehog", target, parameters, command, timeout + 60, this::parseTruffleHog);
     }
 
     public Map<String, Object> job(UUID id, String username, String tool) {
@@ -613,6 +753,129 @@ public class OsintToolService {
         return result;
     }
 
+    private Map<String, Object> parseSpiderFoot(String stdout, String stderr, int exitCode) {
+        String combined = stdout + "\n" + stderr;
+        List<Map<String, Object>> findings = new ArrayList<>();
+        Object parsed = readArbitraryJson(stdout);
+        if (parsed instanceof List<?> list) {
+            for (Object item : list) {
+                if (item instanceof Map<?, ?> map) {
+                    findings.add(spiderFootFinding(map));
+                }
+            }
+        } else if (parsed instanceof Map<?, ?> map) {
+            Object data = map.get("data");
+            if (data instanceof List<?> list) {
+                for (Object item : list) {
+                    if (item instanceof Map<?, ?> row) {
+                        findings.add(spiderFootFinding(row));
+                    }
+                }
+            } else {
+                findings.add(spiderFootFinding(map));
+            }
+        }
+        if (findings.isEmpty()) {
+            for (String line : combined.split("\\R")) {
+                String clean = stripAnsi(line).trim();
+                if (!hasText(clean) || clean.startsWith("[") || clean.length() < 8) {
+                    continue;
+                }
+                findings.add(Map.of("type", "line", "value", sample(clean, 280), "module", "spiderfoot", "score", 48));
+                if (findings.size() >= 180) {
+                    break;
+                }
+            }
+        }
+        Map<String, Integer> byType = new LinkedHashMap<>();
+        for (Map<String, Object> finding : findings) {
+            String type = value(finding.get("type"));
+            byType.put(type, byType.getOrDefault(type, 0) + 1);
+        }
+        Map<String, Object> result = baseResult(exitCode, stdout, stderr);
+        result.put("findings", findings.stream().limit(500).toList());
+        result.put("findingCount", findings.size());
+        result.put("summary", Map.of(
+                "total", findings.size(),
+                "types", byType,
+                "urls", findings.stream().filter(item -> hasText(value(item.get("url")))).count()
+        ));
+        return result;
+    }
+
+    private Map<String, Object> parseTruffleHog(String stdout, String stderr, int exitCode) {
+        List<Map<String, Object>> findings = new ArrayList<>();
+        int verified = 0;
+        int unknown = 0;
+        int unverified = 0;
+        for (String line : stdout.split("\\R")) {
+            String clean = line.trim();
+            if (!clean.startsWith("{")) {
+                continue;
+            }
+            Object parsed = readArbitraryJson(clean);
+            if (!(parsed instanceof Map<?, ?> map)) {
+                continue;
+            }
+            Map<String, Object> finding = truffleHogFinding(map);
+            String status = value(finding.get("status"));
+            if ("verified".equals(status)) {
+                verified++;
+            } else if ("unknown".equals(status)) {
+                unknown++;
+            } else {
+                unverified++;
+            }
+            findings.add(finding);
+        }
+        Map<String, Object> result = baseResult(exitCode, stdout, stderr);
+        result.put("findings", findings.stream().limit(500).toList());
+        result.put("findingCount", findings.size());
+        result.put("summary", Map.of(
+                "total", findings.size(),
+                "verified", verified,
+                "unknown", unknown,
+                "unverified", unverified
+        ));
+        return result;
+    }
+
+    private Map<String, Object> spiderFootFinding(Map<?, ?> map) {
+        String type = firstValue(map, "type", "eventType", "event_type", "event");
+        String value = firstValue(map, "data", "value", "content", "name");
+        String module = firstValue(map, "module", "source", "provider");
+        String url = firstValue(map, "url", "sourceUrl", "source_url");
+        String confidence = firstValue(map, "confidence", "risk", "severity");
+        Map<String, Object> finding = new LinkedHashMap<>();
+        finding.put("type", hasText(type) ? type : "spiderfoot");
+        finding.put("value", sample(hasText(value) ? value : map.toString(), 500));
+        finding.put("module", hasText(module) ? module : "spiderfoot");
+        finding.put("url", url);
+        finding.put("confidence", confidence);
+        finding.put("score", scoreSpiderFoot(type, confidence));
+        return finding;
+    }
+
+    private Map<String, Object> truffleHogFinding(Map<?, ?> map) {
+        String detector = firstValue(map, "DetectorName", "detectorName", "detector_name");
+        String raw = firstValue(map, "Raw", "raw", "Redacted", "redacted");
+        String verifiedValue = firstValue(map, "Verified", "verified");
+        boolean verified = Boolean.parseBoolean(verifiedValue);
+        String sourceType = firstValue(map, "SourceType", "source_type", "sourceType");
+        String sourceName = firstValue(map, "SourceName", "source_name", "sourceName");
+        String sourceId = firstValue(map, "SourceID", "source_id", "sourceId");
+        String status = verified ? "verified" : "unknown";
+        Map<String, Object> finding = new LinkedHashMap<>();
+        finding.put("type", hasText(detector) ? detector : "secret");
+        finding.put("value", sample(redactSecret(raw), 220));
+        finding.put("status", status);
+        finding.put("sourceType", sourceType);
+        finding.put("source", firstNonBlank(sourceName + " " + sourceId));
+        finding.put("score", verified ? 95 : 72);
+        finding.put("metadata", map);
+        return finding;
+    }
+
     private Map<String, Object> baseResult(int exitCode, String stdout, String stderr) {
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("exitCode", exitCode);
@@ -711,6 +974,200 @@ public class OsintToolService {
                 .distinct()
                 .limit(8)
                 .toList();
+    }
+
+    private String sanitizeSpiderFootProfile(String value) {
+        String profile = text(value).toLowerCase(Locale.ROOT);
+        if (!hasText(profile)) {
+            return "passive";
+        }
+        if (!SPIDERFOOT_PROFILES.contains(profile)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Perfil SpiderFoot no valido");
+        }
+        return profile;
+    }
+
+    private String sanitizeSpiderFootTargetType(String value, String target) {
+        String type = text(value).toLowerCase(Locale.ROOT);
+        if (!hasText(type) || "auto".equals(type)) {
+            if (EMAIL_PATTERN.matcher(target).matches()) return "email";
+            if (target.matches("^(?:\\d{1,3}\\.){3}\\d{1,3}$")) return "ip";
+            if (SAFE_DOMAIN.matcher(target).matches()) return "domain";
+            return "name";
+        }
+        if (!SPIDERFOOT_TARGET_TYPES.contains(type)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Tipo de objetivo SpiderFoot no valido");
+        }
+        return type;
+    }
+
+    private String sanitizeSpiderFootTarget(String value, String targetType) {
+        String target = text(value).replaceAll("\\s+", " ");
+        String type = text(targetType).toLowerCase(Locale.ROOT);
+        if (!hasText(target) || target.length() > 180) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Objetivo SpiderFoot no valido");
+        }
+        if ("domain".equals(type)) {
+            return sanitizeDomain(target);
+        }
+        if ("email".equals(type) && !EMAIL_PATTERN.matcher(target).matches()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Email SpiderFoot no valido");
+        }
+        if ("ip".equals(type) && (!target.matches("^(?:\\d{1,3}\\.){3}\\d{1,3}$") || isInvalidIpv4Literal(target))) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "IP SpiderFoot no valida");
+        }
+        if (target.matches(".*[\\r\\n;`$<>].*")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Objetivo SpiderFoot no valido");
+        }
+        return target;
+    }
+
+    private List<String> sanitizeSpiderFootModules(List<String> values, String profile) {
+        List<String> modules = values == null ? List.of() : values.stream()
+                .map(OsintToolService::text)
+                .filter(SAFE_MODULE.asMatchPredicate())
+                .distinct()
+                .limit(24)
+                .toList();
+        if (!modules.isEmpty() || "custom".equals(profile) || "all".equals(profile)) {
+            return modules;
+        }
+        return SPIDERFOOT_MODULE_PRESETS.getOrDefault(profile, List.of());
+    }
+
+    private List<String> sanitizeSpiderFootEventTypes(List<String> values, String targetType) {
+        List<String> events = values == null ? List.of() : values.stream()
+                .map(OsintToolService::text)
+                .map(value -> value.toUpperCase(Locale.ROOT))
+                .filter(SAFE_EVENT_TYPE.asMatchPredicate())
+                .distinct()
+                .limit(20)
+                .toList();
+        if (!events.isEmpty()) {
+            return events;
+        }
+        String event = SPIDERFOOT_EVENT_PRESETS.get(targetType);
+        return hasText(event) ? List.of(event) : List.of();
+    }
+
+    private String sanitizeTruffleHogSourceType(String value) {
+        String sourceType = text(value).toLowerCase(Locale.ROOT);
+        if (!TRUFFLEHOG_SOURCE_TYPES.contains(sourceType)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Tipo de fuente TruffleHog no valido");
+        }
+        return sourceType;
+    }
+
+    private String sanitizeTruffleHogResults(String value) {
+        String results = text(value).toLowerCase(Locale.ROOT);
+        if (!hasText(results)) {
+            return "verified,unknown";
+        }
+        if ("all".equals(results)) {
+            return "verified,unknown,unverified";
+        }
+        if (!TRUFFLEHOG_RESULTS.contains(results)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Filtro de resultados TruffleHog no valido");
+        }
+        return results;
+    }
+
+    private String sanitizeTruffleHogTarget(String sourceType, String value) {
+        String target = text(value);
+        if ("filesystem".equals(sourceType)) {
+            return sanitizeAllowedLocalPath(target).toString();
+        }
+        if (target.startsWith("file://")) {
+            return "file://" + sanitizeAllowedLocalPath(target.substring("file://".length()));
+        }
+        URI uri = normalizeHttpUrl(target, "Destino TruffleHog no valido");
+        return uri.toString();
+    }
+
+    private Path sanitizeAllowedLocalPath(String value) {
+        try {
+            Path path = Path.of(value).toAbsolutePath().normalize();
+            boolean allowed = truffleHogAllowedRoots.stream().anyMatch(path::startsWith);
+            if (!allowed) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Ruta fuera de los directorios permitidos para TruffleHog");
+            }
+            return path;
+        } catch (ResponseStatusException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Ruta TruffleHog no valida");
+        }
+    }
+
+    private URI normalizeHttpUrl(String value, String errorMessage) {
+        String raw = text(value);
+        if (!raw.startsWith("http://") && !raw.startsWith("https://")) {
+            raw = "https://" + raw;
+        }
+        try {
+            URI uri = URI.create(raw);
+            String scheme = text(uri.getScheme()).toLowerCase(Locale.ROOT);
+            String host = text(uri.getHost()).toLowerCase(Locale.ROOT);
+            if (!Set.of("http", "https").contains(scheme) || hasText(uri.getUserInfo()) || !SAFE_HOST.matcher(host).matches() || isInvalidIpv4Literal(host)) {
+                throw new IllegalArgumentException("url");
+            }
+            return uri;
+        } catch (Exception ex) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, errorMessage);
+        }
+    }
+
+    private String sanitizeBranch(String value) {
+        String branch = text(value);
+        if (!hasText(branch)) {
+            return "";
+        }
+        if (!SAFE_BRANCH.matcher(branch).matches() || branch.contains("..")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Rama no valida");
+        }
+        return branch;
+    }
+
+    private void addPathFilterFile(List<String> command, String option, List<String> values, String username, String prefix) {
+        List<String> filters = sanitizePathFilters(values);
+        if (filters.isEmpty()) {
+            return;
+        }
+        Path file = osintTempFile(username, prefix + "-paths", ".txt");
+        try {
+            Files.writeString(file, String.join("\n", filters), StandardCharsets.UTF_8);
+        } catch (IOException ex) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "No se pudo preparar filtro de rutas");
+        }
+        command.add(option);
+        command.add(file.toString());
+    }
+
+    private List<String> sanitizePathFilters(List<String> values) {
+        if (values == null || values.isEmpty()) {
+            return List.of();
+        }
+        return values.stream()
+                .map(OsintToolService::text)
+                .filter(SAFE_PATH_FILTER.asMatchPredicate())
+                .filter(value -> !value.contains(".."))
+                .distinct()
+                .limit(16)
+                .toList();
+    }
+
+    private Path osintTempFile(String username, String prefix, String suffix) {
+        String safeUser = text(username).replaceAll("[^A-Za-z0-9._-]", "_");
+        Path userDir = osintTempRoot.resolve(safeUser).normalize();
+        if (!userDir.startsWith(osintTempRoot)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Directorio temporal no valido");
+        }
+        try {
+            Files.createDirectories(userDir);
+            return Files.createTempFile(userDir, prefix + "-", suffix);
+        } catch (IOException ex) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "No se pudo preparar directorio temporal OSINT");
+        }
     }
 
     private String sanitizePersonQuery(String value) {
@@ -848,8 +1305,12 @@ public class OsintToolService {
     }
 
     private void requireAuthorized(Boolean authorized) {
+        requireAuthorized(authorized, "Confirma alcance autorizado antes de ejecutar git-dumper.");
+    }
+
+    private void requireAuthorized(Boolean authorized, String message) {
         if (!Boolean.TRUE.equals(authorized)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Confirma alcance autorizado antes de ejecutar git-dumper.");
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, message);
         }
     }
 
@@ -1023,6 +1484,17 @@ public class OsintToolService {
         }
     }
 
+    private Object readArbitraryJson(String json) {
+        if (!hasText(json)) {
+            return null;
+        }
+        try {
+            return objectMapper.readValue(json, Object.class);
+        } catch (JsonProcessingException ex) {
+            return null;
+        }
+    }
+
     private String writeJson(Object value) {
         try {
             return objectMapper.writeValueAsString(value == null ? Map.of() : value);
@@ -1082,6 +1554,42 @@ public class OsintToolService {
                 .filter(line -> !line.isBlank())
                 .findFirst()
                 .orElse("");
+    }
+
+    private static String firstValue(Map<?, ?> map, String... keys) {
+        for (String key : keys) {
+            Object value = map.get(key);
+            if (value != null && hasText(String.valueOf(value))) {
+                return String.valueOf(value);
+            }
+        }
+        return "";
+    }
+
+    private static int scoreSpiderFoot(String type, String confidence) {
+        String normalized = text(type).toUpperCase(Locale.ROOT);
+        int score = 55;
+        if (normalized.contains("PASSWORD") || normalized.contains("BREACH") || normalized.contains("LEAK")) score += 25;
+        if (normalized.contains("EMAIL") || normalized.contains("PHONE") || normalized.contains("ACCOUNT")) score += 15;
+        if (normalized.contains("VULNERABILITY") || normalized.contains("MALICIOUS")) score += 30;
+        int confidenceValue = 0;
+        try {
+            confidenceValue = Integer.parseInt(text(confidence).replaceAll("[^0-9]", ""));
+        } catch (Exception ignored) {
+            confidenceValue = 0;
+        }
+        if (confidenceValue > 0) {
+            score = Math.max(score, Math.min(100, confidenceValue));
+        }
+        return Math.min(100, score);
+    }
+
+    private static String redactSecret(String value) {
+        String secret = text(value);
+        if (secret.length() <= 10) {
+            return hasText(secret) ? "[redacted]" : "";
+        }
+        return secret.substring(0, Math.min(4, secret.length())) + "..." + secret.substring(Math.max(4, secret.length() - 4));
     }
 
     private static String cleanupHtml(String value) {
