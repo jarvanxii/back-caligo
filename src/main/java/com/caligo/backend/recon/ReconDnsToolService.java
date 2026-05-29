@@ -61,6 +61,7 @@ public class ReconDnsToolService {
     private final ObjectMapper objectMapper;
     private final ExecutorService executor;
     private final Map<UUID, RuntimeLog> runtimeLogs = new ConcurrentHashMap<>();
+    private final Map<UUID, Object> jobLocks = new ConcurrentHashMap<>();
 
     private final String assetfinderBinary;
     private final String dnsenumBinary;
@@ -180,12 +181,16 @@ public class ReconDnsToolService {
             update(jobId, job -> job.updateProgress(90, "Normalizando resultados"));
             String out = stdout.get(5, TimeUnit.SECONDS);
             String err = stderr.get(5, TimeUnit.SECONDS);
-            Map<String, Object> result = spec.parser().parse(out, err, process.exitValue());
+            int exitCode = process.exitValue();
+            Map<String, Object> result = spec.parser().parse(out, err, exitCode);
             result.put("durationMs", Duration.between(started, Instant.now()).toMillis());
-            if (spec.acceptedExitCodes().contains(process.exitValue())) {
+            if (!spec.acceptedExitCodes().contains(exitCode) && hasUsefulOutput(result)) {
+                result.put("exitWarning", "La herramienta terminó con código " + exitCode + ", pero se conservaron resultados útiles.");
+            }
+            if (spec.acceptedExitCodes().contains(exitCode) || hasUsefulOutput(result)) {
                 update(jobId, job -> job.markCompleted(writeJson(result)));
             } else {
-                update(jobId, job -> job.markFailed("La herramienta terminó con código " + process.exitValue(), writeJson(result)));
+                update(jobId, job -> job.markFailed("La herramienta terminó con código " + exitCode, writeJson(result)));
             }
         } catch (Exception ex) {
             Map<String, Object> result = new LinkedHashMap<>();
@@ -200,6 +205,7 @@ public class ReconDnsToolService {
                     // Limpieza best-effort de temporales.
                 }
             }
+            jobLocks.remove(jobId);
         }
     }
 
@@ -843,10 +849,13 @@ public class ReconDnsToolService {
     }
 
     private void update(UUID jobId, java.util.function.Consumer<ToolExecutionJob> mutation) {
-        jobs.findById(jobId).ifPresent(job -> {
-            mutation.accept(job);
-            jobs.save(job);
-        });
+        Object lock = jobLocks.computeIfAbsent(jobId, ignored -> new Object());
+        synchronized (lock) {
+            jobs.findById(jobId).ifPresent(job -> {
+                mutation.accept(job);
+                jobs.save(job);
+            });
+        }
     }
 
     private Map<String, Object> readJson(String json) {
@@ -976,6 +985,15 @@ public class ReconDnsToolService {
             }
         }
         return output;
+    }
+
+    private boolean hasUsefulOutput(Map<String, Object> result) {
+        Object findingCount = result.get("findingCount");
+        if (findingCount instanceof Number number && number.intValue() > 0) {
+            return true;
+        }
+        Object findings = result.get("findings");
+        return findings instanceof List<?> list && !list.isEmpty();
     }
 
     private record CommandSpec(
