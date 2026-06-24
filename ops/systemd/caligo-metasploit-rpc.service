@@ -1,0 +1,22 @@
+[Unit]
+Description=Caligo Metasploit RPC
+Documentation=file:/var/www/caligo/back/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=fran
+Group=www-data
+WorkingDirectory=/home/fran
+EnvironmentFile=/etc/caligo/back.env
+Environment=DISABLE_BOOTSNAP=1
+ExecStart=/usr/bin/msfconsole -q -n -r /etc/caligo/msgrpc.rc
+Restart=on-failure
+RestartSec=8
+NoNewPrivileges=true
+StandardOutput=null
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

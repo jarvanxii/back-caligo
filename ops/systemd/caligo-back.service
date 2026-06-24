@@ -1,0 +1,21 @@
+[Unit]
+Description=Caligo Spring Boot Backend
+Documentation=file:/var/www/caligo/back/README.md
+After=network-online.target mariadb.service
+Wants=network-online.target caligo-metasploit-rpc.service gvmd.service ospd-openvas.service gsad.service redis-server.service redis-server@openvas.service
+Requires=mariadb.service
+
+[Service]
+Type=simple
+User=fran
+Group=www-data
+WorkingDirectory=/var/www/caligo/back
+EnvironmentFile=/etc/caligo/back.env
+ExecStart=/usr/lib/jvm/java-21-openjdk-amd64/bin/java -jar /var/www/caligo/back/target/back-caligo-0.1.0-SNAPSHOT.jar
+SuccessExitStatus=143
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=false
+
+[Install]
+WantedBy=multi-user.target

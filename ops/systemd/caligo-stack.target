@@ -1,0 +1,8 @@
+[Unit]
+Description=Caligo backend stack
+Documentation=file:/var/www/caligo/back/README.md
+Wants=mariadb.service redis-server.service redis-server@openvas.service ospd-openvas.service gvmd.service gsad.service caligo-metasploit-rpc.service caligo-back.service
+After=network-online.target mariadb.service redis-server.service redis-server@openvas.service ospd-openvas.service gvmd.service gsad.service caligo-metasploit-rpc.service caligo-back.service
+
+[Install]
+WantedBy=multi-user.target

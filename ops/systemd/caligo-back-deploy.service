@@ -1,0 +1,19 @@
+[Unit]
+Description=Deploy Caligo backend from Git
+Documentation=file:/var/www/caligo/back/README.md
+After=network-online.target mariadb.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+WorkingDirectory=/var/www/caligo/back
+Environment=CALIGO_BACK_REPO_DIR=/var/www/caligo/back
+Environment=CALIGO_BACK_BRANCH=main
+Environment=JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
+ExecStart=/usr/local/sbin/caligo-back-deploy
+TimeoutStartSec=900
+
+[Install]
+WantedBy=multi-user.target
