@@ -76,7 +76,7 @@ Password: definido por CALIGO_DB_PASSWORD
 JDBC: jdbc:mariadb://localhost:3306/caligo
 ```
 
-Los secretos reales de local/servidor no se versionan. Estan fuera del repo, en `C:\Users\Jarva\Desktop\AGENTS\CREDENCIALES.MD`.
+Los secretos reales de local/servidor no se versionan. Estan fuera del repo, en `C:\Users\Jarva\Desktop\OPERACION AGENTICA.md`.
 
 Spring ejecuta Flyway al arrancar. Hibernate queda con `ddl-auto=validate`, por lo que las migraciones SQL son la fuente de verdad.
 
@@ -84,8 +84,8 @@ Spring ejecuta Flyway al arrancar. Hibernate queda con `ddl-auto=validate`, por 
 
 ```powershell
 cd C:\Users\Jarva\Desktop\git-repos\back-caligo
-$env:CALIGO_DB_ROOT_PASSWORD="<password-local-de-CREDENCIALES>"
-$env:CALIGO_DB_PASSWORD="<password-local-de-CREDENCIALES>"
+$env:CALIGO_DB_ROOT_PASSWORD="<password-local-del-documento-operativo>"
+$env:CALIGO_DB_PASSWORD="<password-local-del-documento-operativo>"
 docker compose up -d
 mvn spring-boot:run
 ```
@@ -995,7 +995,7 @@ Variables minimas en `/etc/caligo/back.env`:
 ```bash
 CALIGO_DB_URL=jdbc:mariadb://localhost:3306/caligo
 CALIGO_DB_USER=root
-CALIGO_DB_PASSWORD=<password-servidor-de-CREDENCIALES>
+CALIGO_DB_PASSWORD=<password-servidor-del-documento-operativo>
 CALIGO_JWT_SECRET=<secreto-largo>
 CALIGO_CORS_ALLOWED_ORIGINS=http://localhost:5174,http://127.0.0.1:5174,http://192.168.0.17:5174
 CALIGO_SERVER_PORT=8080

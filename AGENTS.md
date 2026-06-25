@@ -12,6 +12,21 @@ Database schema is not generated from Hibernate. Flyway migrations under
 `src/main/resources/db/migration` are the source of truth, and JPA runs with
 `ddl-auto=validate`.
 
+## Shared Caligo Context
+
+The paired frontend lives at `C:\Users\Jarva\Desktop\git-repos\front-caligo`.
+Remotes are `https://github.com/jarvanxii/front-caligo.git` and
+`https://github.com/jarvanxii/back-caligo.git`. The assigned LAN host is
+Servidor 2, `192.168.0.253`; SSH normally uses port `22` and user `fran`.
+Server paths are `/var/www/caligo/front` and `/var/www/caligo/back`.
+Caligo coexists there with Thorondor and Iberia 2084; do not use Servidor 1
+de La Pipa de Gandalf unless the user explicitly asks.
+
+Operational credentials stay outside Git in
+`C:\Users\Jarva\Desktop\OPERACION AGENTICA.md`, section `SERVIDOR 2`. This
+document is consult-only: use it for authorized operations, but never edit it,
+print secrets, copy them into a repo or paste them into responses.
+
 ## Build, Test, and Development Commands
 
 Use Java 21. On this Windows machine Maven may need `JAVA_HOME` pointed at the
@@ -46,7 +61,13 @@ changes covered by Flyway migrations rather than ad hoc Hibernate updates.
 
 Never commit `.env`, real JWT secrets, database passwords, dumps with private
 data or production credentials. Any future integration with offensive security
-tools must be audited and scoped to controlled, authorized environments.
+tools must be audited and scoped to controlled, authorized environments. Record
+user, target, parameters, status, result and traceability for active operations,
+and keep command previews/logs redacted.
+
+Do not create public ports, tunnels or new persistent services unless the user
+explicitly asks. Keep `ddl-auto=validate`; schema changes belong in Flyway
+migrations under `src/main/resources/db/migration`.
 
 ## Backend Deployment Workflow
 
@@ -65,9 +86,10 @@ is normally tested locally with Vite.
 
 Current project context has used `192.168.0.253` as the Caligo server. If a task
 mentions `192.168.0.254`, confirm the target before deploying because the local
-credentials file maps that LAN address to another application server.
+operation document maps that LAN address to another application server.
 
 ## Commit & Pull Request Guidelines
 
-This repo has no commit history yet. Use short Spanish descriptive commits and
-keep backend changes separate from `front-caligo`.
+Recent history uses short Spanish descriptive commits such as `Integra
+herramientas OSINT`, `Corrige ejecucion OSINT en backend` and `Añade scripts de
+despliegue Caligo`. Keep backend changes separate from `front-caligo`.
